@@ -1,8 +1,12 @@
-# adiumtoeml
+# chatlogtoeml
 
-Conversion tool to migrate Adium chat logs to RFC822 .eml files for archiving.
+Conversion tool to migrate various flavors of instant messaging and SMS logs to RFC822 .eml files for archiving.
+
+Originally known as "adiumToEML", but now expanded to handle other types of logs, including the output of [imessage-exporter](https://github.com/Jachimo/imessage-exporter).
 
 ## Usage
+
+## Adium Log Conversion
 
 From within the adiumtoeml directory:   
 `$ ./adiumToEml.py chatlogfile [outputdir]`
@@ -16,7 +20,7 @@ Most Adium logs end in either `.AdiumHTMLLog` or `.chatlog`, although the tool w
 
 Written and tested using Python 3.9.
 
-### Required Libraries / Packages
+## Dependencies
 
 A few packages not included in Python's standard library are required for operation, and can be installed using `pip`.
 These are:
@@ -24,28 +28,9 @@ These are:
 * `pytz` - timezone handling support
 * `py-dateutil` - extensions to the python `datetime` module, including timezone-aware date parsing
 
-### Other Options
-
-The most up-to-date usage options can be listed by running `./adiumToEml.py -h`.
-It is included here for reference:
-```
-usage: adiumToEml.py [-h] [--clobber] [--no-background] infilename [outdirname]
-
-Convert Adium log files to RFC822 MIME text files (.eml)
-
-positional arguments:
-  infilename       Input file
-  outdirname       Output directory (optional, defaults to cwd)
-
-optional arguments:
-  -h, --help       show this help message and exit
-  --clobber        Overwrite identically-named output files
-  --no-background  Strips background color from message text
-```
-
 ## Known Bugs / Limitations
 
-### Incomplete Facebook Chat Logs
+### Incomplete Adium Facebook Chat Logs
 
 Adium logs of Facebook chat conversations (from the period when Facebook was using an open standards, XMPP-compatible chat service) seem to be frequently malformed.
 Although the tool attempts to link Facebook user IDs to real names (stored as 'aliases' in the XML), this is only occasionally possible.
@@ -53,7 +38,7 @@ Also, some logs appear to only contain one side (usually the remote) of the conv
 
 A possible cause is related to how Facebook handled multiple-device support: received messages were likely 'broadcast' to all signed-in devices, but transmitted messages from a device other than the computer running Adium were not re-sent out by Facebook's servers, and thus are not included in the Adium log.
 
-### Malformed XML
+### Malformed Adium XML Logs
 
 It appears that some versions of Adium produced malformed XML log files.
 Missing `</chat>` tags are particularly common in some periods (most are dated around early 2003, and the issue was apparently fixed by mid-2004).
@@ -65,7 +50,7 @@ A small Bash script which runs this command against a list of files is included 
 It is designed to be run against the `failed_YYYY-MM-DD.log` files produced by the `bulk_convert.sh` script.
 Original files are preserved with the extension `.bkup` added, so they won't be picked up by the processor on future runs.
 
-### Illegal XML Characters
+#### Illegal XML Characters
 
 Despite writing files that claim to be well-formed XML 1.0, it appears that some versions of Adium did not sanitize their inputs very well.
 The existence of ASCII control characters (such as hex 0x19, reportedly misused by Microsoft products for 'smart single quote' and seen in copied/pasted content) are especially problematic, as they terminate XML parsing when encountered, and the normal Python `.encode()` and `.decode()` tricks don't seem to strip them.
@@ -95,8 +80,6 @@ Please feel free to fork this project; pull requests will be considered as long 
 This software is provided without warranty and without any representations as to its functionality for a particular purpose.
 End-user support is not available. 
 
-## Errata & References
+## References
 
-### Adium Log Formats
-
-Information on the various 'flavors' of Adium log formats can be found [in this Github Gist](https://gist.github.com/kadin2048/ffe811e56c8e8fb6ceb8bade09439341).
+- Information on the various 'flavors' of Adium log formats can be found [in this Github Gist](https://gist.github.com/kadin2048/ffe811e56c8e8fb6ceb8bade09439341).
