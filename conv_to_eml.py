@@ -14,14 +14,19 @@ import conversation
 
 
 # CSS for styling the HTML part of the message
-with open('converted.css', 'r') as cssfile:
-    css = cssfile.read()
+import os as _os
+_cssfile = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), 'converted.css')
+try:
+    with open(_cssfile, 'r') as cssfile:
+        css = cssfile.read()
+except Exception:
+    css = ''
 
 # Regex for matching CSS to strip when --strip-background argument is used
 bgcssregex = re.compile('background-color: .*?; *')
 
 
-def mimefromconv(conv: conversation.Conversation, args) -> MIMEMultipart:
+def mimefromconv(conv: conversation.Conversation, no_background: bool = False) -> MIMEMultipart:
     """Now we take the Conversation object and make a MIME email message out of it..."""
     # Do some sanity-checking on the input Conversation and skip trivial (no message contents) logs
     if not isinstance(conv, conversation.Conversation):
@@ -46,26 +51,44 @@ def mimefromconv(conv: conversation.Conversation, args) -> MIMEMultipart:
     fakedomain = f'{conv.service.lower()}.{conv.imclient.lower()}.invalid'  # non-routable fake domain
 
     # Construct 'From' header
-    if '@' in conv.participants[0].userid:  # For Facebook and Jabber, which have email-like userid@domain.tld
-        header_from_userid = conv.participants[0].userid
-    else:  # For AIM, MSN, etc. that use traditional screennames w/o @domain.tld
-        header_from_userid = conv.participants[0].userid + '@' + fakedomain
-    if conv.participants[0].realname:
-        header_from = f'"{conv.participants[0].realname}" <{header_from_userid}>'
+    # Prefer participant marked 'local', fall back to conv.localaccount or first participant
+    local_participant = None
+    for p in conv.participants:
+        if p.position == 'local':
+            local_participant = p
+            break
+    if not local_participant and conv.localaccount:
+        local_participant = conv.get_participant(conv.localaccount)
+    if not local_participant:
+        local_participant = conv.participants[0]
+
+    if '@' in local_participant.userid:
+        header_from_userid = local_participant.userid
+    else:
+        header_from_userid = local_participant.userid + '@' + fakedomain
+    if local_participant.realname:
+        header_from = f'"{local_participant.realname}" <{header_from_userid}>'
     else:
         header_from = f'"{header_from_userid}" <{header_from_userid}>'
     msg_base['From'] = header_from
 
-    # Construct 'To' header
-    if '@' in conv.participants[1].userid:  # For Facebook and Jabber, which have email-like userid@domain.tld
-        header_to_userid = conv.participants[1].userid
-    else:  # For AIM, MSN, etc. that use traditional screennames w/o @domain.tld
-        header_to_userid = conv.participants[1].userid + '@' + fakedomain
-    if conv.participants[1].realname:
-        header_to = f'"{conv.participants[1].realname}" <{header_to_userid}>'
+    # Construct 'To' header - include all other participants
+    to_parts = []
+    for p in conv.participants:
+        if p.userid == local_participant.userid:
+            continue
+        if '@' in p.userid:
+            header_to_userid = p.userid
+        else:
+            header_to_userid = p.userid + '@' + fakedomain
+        if p.realname:
+            to_parts.append(f'"{p.realname}" <{header_to_userid}>')
+        else:
+            to_parts.append(f'"{header_to_userid}" <{header_to_userid}>')
+    if to_parts:
+        msg_base['To'] = ', '.join(to_parts)
     else:
-        header_to = f'"{header_to_userid}" <{header_to_userid}>'
-    msg_base['To'] = header_to
+        msg_base['To'] = header_from
 
     # Construct 'Date' and 'Subject' headers
     if conv.filenameuserid:
@@ -162,7 +185,7 @@ def mimefromconv(conv: conversation.Conversation, args) -> MIMEMultipart:
                 line.append('</span>')
             if message.html:  # If message exists as HTML, pass it through
                 line.append('<span class="message_text">')
-                if args.no_background:  # strip background-color, e.g. "background-color: #acb5bf;"
+                if no_background:  # strip background-color, e.g. "background-color: #acb5bf;"
                     line.append(re.sub(bgcssregex, '', message.html))  # see regex at top of file
                 else:
                     line.append(message.html)
@@ -178,7 +201,7 @@ def mimefromconv(conv: conversation.Conversation, args) -> MIMEMultipart:
                         line.append('font-size: ' + str(int(message.textsize)) + 'pt; ')
                     if message.textcolor:
                         line.append('color: ' + message.textcolor + '; ')
-                    if message.bgcolor and (not args.no_background):
+                    if message.bgcolor and (not no_background):
                         line.append('background-color: ' + message.bgcolor + '; ')
                     line.append('"')
                 line.append(' class="message_text">')

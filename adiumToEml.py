@@ -83,7 +83,7 @@ def main() -> int:
             conv = adium_html.toconv(fi)
 
     try:
-        eml = conv_to_eml.mimefromconv(conv, args)  # produce MIME message from Conversation (and any attachments)
+        eml = conv_to_eml.mimefromconv(conv, args.no_background)  # produce MIME message from Conversation (and any attachments)
     except ValueError:
         logging.critical('Fatal error while creating MIME document from ' + args.infilename)
         return 1

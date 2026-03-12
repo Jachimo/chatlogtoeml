@@ -1,0 +1,96 @@
+#!/usr/bin/env python3
+"""CLI to convert imessage-exporter NDJSON files to .eml using conversation/conv_to_eml pipeline
+
+This script is intentionally small: it parses the NDJSON into Conversation objects (imessage_json.parse_file),
+then reuses conv_to_eml.mimefromconv to produce EML files.
+"""
+
+import os
+import sys
+import argparse
+import logging
+from pathlib import Path
+
+import conv_to_eml
+import imessage_json
+
+
+def sanitize_chat_id(chat_id: str, maxlen: int = 64) -> str:
+    safe = ''.join([c if c.isalnum() else '_' for c in chat_id])
+    return safe[:maxlen]
+
+
+def make_out_filename(chat_id: str, startdate, idx: int) -> str:
+    datepart = startdate.date().isoformat() if hasattr(startdate, 'date') else 'nodate'
+    return f"{sanitize_chat_id(chat_id)}_{datepart}_{idx:04d}.eml"
+
+
+def main(argv=None) -> int:
+    if argv is None:
+        argv = sys.argv[1:]
+    parser = argparse.ArgumentParser(description='Convert imessage-exporter NDJSON to .eml files')
+    parser.add_argument('infile', help='Input NDJSON file')
+    parser.add_argument('outdir', nargs='?', default=os.getcwd(), help='Output directory (defaults to cwd)')
+    parser.add_argument('--local-handle', help='Local account handle (phone/email) to use for From:', default=None)
+    parser.add_argument('--idle-hours', type=float, default=4.0, help='Idle gap hours to segment conversations')
+    parser.add_argument('--min-messages', type=int, default=2, help='Minimum messages to keep a segment')
+    parser.add_argument('--max-messages', type=int, default=0, help='Force split at this many messages (0=unlimited)')
+    parser.add_argument('--max-days', type=int, default=0, help='Force split if segment spans more than N days (0=unlimited)')
+    parser.add_argument('--no-background', action='store_true', help='Strip background style from HTML')
+    parser.add_argument('--clobber', action='store_true', help='Overwrite existing .eml files')
+    parser.add_argument('--debug', action='store_true', help='Enable debug logging')
+    args = parser.parse_args(argv)
+
+    logging.basicConfig(level=logging.DEBUG if args.debug else logging.INFO)
+
+    if not os.path.isfile(args.infile):
+        logging.critical('Input file not found: %s', args.infile)
+        return 1
+    if not os.path.isdir(args.outdir):
+        logging.critical('Output dir (%s) specified but not a directory.', args.outdir)
+        return 1
+
+    idx_counters = {}
+    for conv in imessage_json.parse_file(args.infile, local_handle=args.local_handle,
+                                        idle_hours=args.idle_hours, min_messages=args.min_messages,
+                                        max_messages=args.max_messages, max_days=args.max_days):
+        # compose output filename
+        chat_id = conv.filenameuserid or conv.origfilename or 'chat'
+        if conv.startdate:
+            startdate = conv.startdate
+        else:
+            try:
+                startdate = conv.getoldestmessage().date
+            except Exception:
+                startdate = None
+        idx = idx_counters.get(chat_id, 0)
+        outname = make_out_filename(chat_id, startdate or (startdate if startdate else ''), idx)
+        outpath = os.path.join(args.outdir, outname)
+        if os.path.exists(outpath) and not args.clobber:
+            logging.warning('Skipping existing file %s (use --clobber to overwrite)', outpath)
+            continue
+        try:
+            eml = conv_to_eml.mimefromconv(conv, args.no_background)
+        except Exception as e:
+            logging.error('Failed to create MIME for chat %s: %s', chat_id, e)
+            continue
+        # Add NDJSON-specific headers
+        if conv.filenameuserid:
+            eml['X-Chat-Identifier'] = conv.filenameuserid
+        if hasattr(conv, 'startdate') and conv.startdate:
+            eml['X-Segment-Start'] = conv.startdate.isoformat()
+        eml['X-Converted-By'] = os.path.basename(sys.argv[0])
+
+        try:
+            with open(outpath, 'w') as fo:
+                fo.write(eml.as_string())
+            logging.info('Wrote %s', outpath)
+        except Exception as e:
+            logging.error('Failed to write %s: %s', outpath, e)
+        idx_counters[chat_id] = idx + 1
+
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())
