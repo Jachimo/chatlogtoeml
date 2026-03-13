@@ -14,6 +14,10 @@ import logging
 from typing import Iterable, List, Optional
 import dateutil.parser
 import datetime
+import os
+import tempfile
+import hashlib
+import html as _html
 
 import conversation
 
@@ -62,20 +66,33 @@ def segment_messages(raw_msgs: List[dict], idle_hours: float = 4.0, min_messages
 
     current = []
     last_dt = None
+    start_dt = None
     for dt, r in parsed:
         if not current:
             current.append((dt, r))
             last_dt = dt
+            start_dt = dt
             continue
         gap = (dt - last_dt).total_seconds()
+        # split on idle gap
         if idle_hours and gap > idle_hours * 3600:
-            # emit current
             if len(current) >= min_messages:
                 yield [item[1] for item in current]
             else:
                 logging.debug('Skipping short segment of %d messages', len(current))
             current = [(dt, r)]
             last_dt = dt
+            start_dt = dt
+            continue
+        # split on max_days
+        if max_days and start_dt and (dt - start_dt).total_seconds() > max_days * 86400:
+            if len(current) >= min_messages:
+                yield [item[1] for item in current]
+            else:
+                logging.debug('Skipping short segment (max_days) of %d messages', len(current))
+            current = [(dt, r)]
+            last_dt = dt
+            start_dt = dt
             continue
         # force split by max_messages
         if max_messages and len(current) >= max_messages:
@@ -85,6 +102,7 @@ def segment_messages(raw_msgs: List[dict], idle_hours: float = 4.0, min_messages
                 logging.debug('Skipping short segment (max_messages) of %d messages', len(current))
             current = [(dt, r)]
             last_dt = dt
+            start_dt = dt
             continue
         current.append((dt, r))
         last_dt = dt
@@ -94,7 +112,8 @@ def segment_messages(raw_msgs: List[dict], idle_hours: float = 4.0, min_messages
 
 
 def build_conversation_from_segment(segment: List[dict], chat_identifier: str,
-                                    origfilename: str, local_handle: Optional[str]) -> conversation.Conversation:
+                                    origfilename: str, local_handle: Optional[str],
+                                    embed_attachments: bool = False) -> conversation.Conversation:
     conv = conversation.Conversation()
     conv.origfilename = origfilename
     conv.imclient = 'iMessage'
@@ -116,28 +135,90 @@ def build_conversation_from_segment(segment: List[dict], chat_identifier: str,
     if local_handle:
         conv.set_local_account(local_handle)
 
-    # Add messages
+    # Two-pass: build messages and collect reactions
+    messages_by_guid = {}
+    reactions = {}  # target_guid -> list of reaction dicts
+
     for msgobj in segment:
+        assoc = msgobj.get('associated_message_guid')
+        rtype = msgobj.get('reaction_type') or msgobj.get('reaction')
+        # If this looks like a reaction (no text or explicit reaction_type), collect it
+        if rtype or (assoc and not msgobj.get('text')):
+            if assoc:
+                reactions.setdefault(assoc, []).append(msgobj)
+            else:
+                reactions.setdefault(None, []).append(msgobj)
+            continue
+        # Normal message
         m = _raw_to_message(msgobj, local_handle)
-        # Add participant for this message
-        conv.add_participant(m.msgfrom)
-        # Set remote/local flags
-        if local_handle and m.msgfrom.lower() == local_handle.lower():
-            conv.set_local_account(m.msgfrom)
-        else:
-            conv.set_remote_account(m.msgfrom)
-        # Preserve attachments metadata if present (no binary payload)
+        # Preserve attachments metadata; include payload if local path available
         atts = msgobj.get('attachments') or []
         for a in atts:
             att = conversation.Attachment()
             att.name = a.get('filename') or a.get('transfer_name') or a.get('mime_type') or 'attachment'
             att.mimetype = a.get('mime_type') or 'application/octet-stream'
-            # payload not read; keep path if available in metadata
-            att.data = b''
+            path = a.get('path')
+            if embed_attachments and path and os.path.isfile(path):
+                try:
+                    with open(path, 'rb') as af:
+                        att.data = af.read()
+                except Exception:
+                    att.data = b''
+            else:
+                att.data = b''
             att.gen_contentid()
             m.attachments.append(att)
             conv.hasattachments = True
+        # Add participant for this message and set roles
+        conv.add_participant(m.msgfrom)
+        if local_handle and m.msgfrom.lower() == (local_handle or '').lower():
+            conv.set_local_account(m.msgfrom)
+        else:
+            conv.set_remote_account(m.msgfrom)
         conv.add_message(m)
+        if m.guid:
+            messages_by_guid[m.guid] = m
+
+    # Process reactions: attach as footnotes to target messages when possible
+    for target_guid, reaction_list in reactions.items():
+        if target_guid is None:
+            # Unknown-target reactions -> render as events
+            for r in reaction_list:
+                actor = r.get('actor') or r.get('sender') or r.get('handle') or 'UNKNOWN'
+                rtype = r.get('reaction_type') or r.get('reaction') or 'reacted'
+                ev = conversation.Message('event')
+                ev.msgfrom = 'System Message'
+                ev.date = _parse_date(r.get('date')) or datetime.datetime.now(datetime.timezone.utc)
+                ev.text = f'{actor} {rtype} a message (unknown target)'
+                conv.add_message(ev)
+            continue
+        target_msg = messages_by_guid.get(target_guid)
+        if target_msg:
+            footnotes = []
+            for r in reaction_list:
+                actor = r.get('actor') or r.get('sender') or r.get('handle') or 'UNKNOWN'
+                rtype = r.get('reaction_type') or r.get('reaction') or 'reacted'
+                footnotes.append(f'{rtype} by {actor}')
+            footnote_text = ' | '.join(footnotes)
+            # Append to HTML if present, otherwise to text
+            if target_msg.html:
+                target_msg.html += f'<div class="reactions">{_html.escape(footnote_text)}</div>'
+            else:
+                if target_msg.text:
+                    target_msg.text += '\n' + footnote_text
+                else:
+                    target_msg.text = footnote_text
+        else:
+            # Target outside this segment -> emit as event
+            for r in reaction_list:
+                actor = r.get('actor') or r.get('sender') or r.get('handle') or 'UNKNOWN'
+                rtype = r.get('reaction_type') or r.get('reaction') or 'reacted'
+                ev = conversation.Message('event')
+                ev.msgfrom = 'System Message'
+                ev.date = _parse_date(r.get('date')) or datetime.datetime.now(datetime.timezone.utc)
+                ev.text = f'{actor} {rtype} a message (GUID {target_guid})'
+                conv.add_message(ev)
+
     # determine startdate
     if conv.messages:
         conv.startdate = conv.getoldestmessage().date
@@ -146,28 +227,127 @@ def build_conversation_from_segment(segment: List[dict], chat_identifier: str,
 
 def parse_file(path: str, local_handle: Optional[str] = None,
                idle_hours: float = 4.0, min_messages: int = 2,
-               max_messages: int = 0, max_days: int = 0) -> Iterable[conversation.Conversation]:
+               max_messages: int = 0, max_days: int = 0,
+               stream: bool = False, stream_dir: Optional[str] = None,
+               embed_attachments: bool = False) -> Iterable[conversation.Conversation]:
     """Main entry: parse NDJSON and yield Conversation objects (segmented).
 
-    This implementation groups by chat_identifier in memory; large exports may require a
-    streaming / flushing strategy (see DEV_PLAN.md).
+    If stream=True, messages are sharded to per-chat temporary files to avoid
+    holding all chats in memory. After sharding, each chat file is processed
+    sequentially to build Conversation objects.
     """
-    with open(path, 'r') as f:
-        chats = {}
-        for ln in f:
-            ln = ln.strip()
-            if not ln:
-                continue
-            try:
-                obj = json.loads(ln)
-            except Exception as e:
-                logging.warning('Failed to parse NDJSON line: %s', e)
-                continue
-            chat_id = obj.get('chat_identifier') or obj.get('chat_guid') or 'unknown'
-            chats.setdefault(chat_id, []).append(obj)
+    if not stream:
+        with open(path, 'r') as f:
+            chats = {}
+            for ln in f:
+                ln = ln.strip()
+                if not ln:
+                    continue
+                try:
+                    obj = json.loads(ln)
+                except Exception as e:
+                    logging.warning('Failed to parse NDJSON line: %s', e)
+                    continue
+                chat_id = obj.get('chat_identifier') or obj.get('chat_guid') or 'unknown'
+                chats.setdefault(chat_id, []).append(obj)
 
-    for chat_id, msgs in chats.items():
-        for segment in segment_messages(msgs, idle_hours=idle_hours, min_messages=min_messages,
-                                        max_messages=max_messages, max_days=max_days):
-            conv = build_conversation_from_segment(segment, chat_id, path, local_handle)
-            yield conv
+        for chat_id, msgs in chats.items():
+            for segment in segment_messages(msgs, idle_hours=idle_hours, min_messages=min_messages,
+                                            max_messages=max_messages, max_days=max_days):
+                conv = build_conversation_from_segment(segment, chat_id, path, local_handle, embed_attachments=embed_attachments)
+                yield conv
+        return
+
+    # streaming / sharding path
+    if stream_dir:
+        base = os.path.abspath(stream_dir)
+        os.makedirs(base, exist_ok=True)
+        cleanup_base = False
+    else:
+        base = tempfile.mkdtemp(prefix='imessage_shards_')
+        cleanup_base = True
+
+    open_files = {}
+    chatfile_map = {}  # fpath -> chat_id
+    max_open = 512
+
+    try:
+        with open(path, 'r') as f:
+            for ln in f:
+                ln = ln.strip()
+                if not ln:
+                    continue
+                try:
+                    obj = json.loads(ln)
+                except Exception as e:
+                    logging.warning('Failed to parse NDJSON line: %s', e)
+                    continue
+                chat_id = obj.get('chat_identifier') or obj.get('chat_guid') or 'unknown'
+                key_hash = hashlib.sha1(chat_id.encode('utf-8', errors='ignore')).hexdigest()[:8]
+                safe = ''.join([c if c.isalnum() else '_' for c in chat_id])[:40]
+                fname = f"{safe}_{key_hash}.ndjson"
+                fpath = os.path.join(base, fname)
+                if fpath not in chatfile_map:
+                    chatfile_map[fpath] = chat_id
+                fh = open_files.get(fpath)
+                if fh is None:
+                    try:
+                        fh = open(fpath, 'a')
+                        open_files[fpath] = fh
+                    except Exception:
+                        # fallback: write in one-shot
+                        with open(fpath, 'a') as fh2:
+                            fh2.write(ln + "\n")
+                        continue
+                fh.write(ln + "\n")
+                # limit open descriptors
+                if len(open_files) > max_open:
+                    k, v = open_files.popitem()
+                    try:
+                        v.close()
+                    except Exception:
+                        pass
+
+        # close remaining
+        for v in open_files.values():
+            try:
+                v.close()
+            except Exception:
+                pass
+        open_files.clear()
+
+        # process each chat file sequentially
+        for fpath in sorted(chatfile_map.keys()):
+            chat_id = chatfile_map.get(fpath) or os.path.basename(fpath)
+            msgs = []
+            try:
+                with open(fpath, 'r') as fh:
+                    for ln in fh:
+                        ln = ln.strip()
+                        if not ln:
+                            continue
+                        try:
+                            obj = json.loads(ln)
+                        except Exception:
+                            continue
+                        msgs.append(obj)
+            except Exception as e:
+                logging.warning('Failed to read shard %s: %s', fpath, e)
+                continue
+
+            for segment in segment_messages(msgs, idle_hours=idle_hours, min_messages=min_messages,
+                                            max_messages=max_messages, max_days=max_days):
+                conv = build_conversation_from_segment(segment, chat_id, path, local_handle, embed_attachments=embed_attachments)
+                yield conv
+
+    finally:
+        if cleanup_base:
+            try:
+                for fn in os.listdir(base):
+                    try:
+                        os.remove(os.path.join(base, fn))
+                    except Exception:
+                        pass
+                os.rmdir(base)
+            except Exception:
+                pass
