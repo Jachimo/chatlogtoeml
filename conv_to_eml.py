@@ -23,7 +23,7 @@ except Exception:
     css = ''
 
 # Regex for matching CSS to strip when --strip-background argument is used
-bgcssregex = re.compile('background-color: .*?; *')
+bgcssregex = re.compile(r'(?:background(?:-color)?\s*:\s*[^;]+;)', re.I)
 
 
 def mimefromconv(conv: conversation.Conversation, no_background: bool = False) -> MIMEMultipart:
@@ -143,7 +143,13 @@ def mimefromconv(conv: conversation.Conversation, no_background: bool = False) -
     html_lines = []
     html_lines.append('<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">')
     html_lines.append('<html>')
-    html_lines.append('<head>\n' + css + '\n</head>')  # see css at top of this file
+    css_use = css
+    if no_background:
+        try:
+            css_use = re.sub(bgcssregex, '', css)
+        except Exception:
+            css_use = css
+    html_lines.append('<head>\n' + css_use + '\n</head>')  # see css at top of this file
     html_lines.append('<body>')
     for message in conv.messages:
         if message.type == 'event':  # this is for system messages, etc.
@@ -172,9 +178,9 @@ def mimefromconv(conv: conversation.Conversation, no_background: bool = False) -
                 line.append('(' + message.date.strftime(datefmt) + ')&nbsp;')
                 line.append('</span>')
             if message.msgfrom:
-                if conv.userid_islocal(message.msgfrom.lower()):   # for local participant CSS
+                if conv.userid_islocal(message.msgfrom):   # for local participant CSS
                     line.append('<span class="localname">')
-                elif conv.userid_isremote(message.msgfrom.lower()):  # for remote participant CSS
+                elif conv.userid_isremote(message.msgfrom):  # for remote participant CSS
                     line.append('<span class="remotename">')
                 else:
                     line.append('<span class="name">')  # catchall for indeterminate participants
@@ -212,11 +218,24 @@ def mimefromconv(conv: conversation.Conversation, no_background: bool = False) -
                     line.append('\n<br><span class="attachment">Attachment:&nbsp;<a href="cid:'
                                 + att.contentid + '">' + att.name + '</a></span>')
                     if att.data:
-                        attachment_part = MIMEBase('application', att.mimetype.split('/')[-1])
+                        # determine mime main/sub
+                        mime_main = 'application'
+                        mime_sub = 'octet-stream'
+                        if isinstance(att.mimetype, str) and '/' in att.mimetype:
+                            try:
+                                mime_main, mime_sub = att.mimetype.split('/', 1)
+                            except Exception:
+                                mime_main, mime_sub = 'application', 'octet-stream'
+                        attachment_part = MIMEBase(mime_main, mime_sub)
                         attachment_part.set_payload(att.data)
-                        email.encoders.encode_base64(attachment_part)  # BASE64 for attachments (ugh)
+                        email.encoders.encode_base64(attachment_part)  # BASE64 for attachments
                         attachment_part.add_header('Content-Disposition', 'attachment', filename=att.name)
-                        attachment_part['Content-ID'] = '<' + att.contentid + '>'
+                        attachment_part.add_header('Content-ID', '<' + att.contentid + '>')
+                        if att.mimetype:
+                            try:
+                                attachment_part.add_header('Content-Type', att.mimetype, name=att.name)
+                            except Exception:
+                                pass
                         msg_base.attach(attachment_part)  # attach to the top-level object, multipart/related
             line.append('</p>')
             html_lines.append(''.join(line))  # join line components without spaces

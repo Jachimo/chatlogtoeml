@@ -23,17 +23,21 @@ class Conversation:
         self.hasattachments: bool = False  # Flag to indicate that 1 or more message contains an attachment
 
     def add_participant(self, userid):
-        if userid not in self.listparticipantuserids():  # if userid is not in any existing Participant.userid
+        # Avoid duplicates (case-insensitive)
+        if not any(p.userid.lower() == (userid or '').lower() for p in self.participants):
             p = Participant(userid)
             self.participants.append(copy.deepcopy(p))
-        if userid == self.localaccount:
-            self.set_local_account(userid)
-        if userid == self.remoteaccount:
-            self.set_remote_account(userid)
+        try:
+            if self.localaccount and userid and userid.lower() == self.localaccount.lower():
+                self.set_local_account(userid)
+            if self.remoteaccount and userid and userid.lower() == self.remoteaccount.lower():
+                self.set_remote_account(userid)
+        except Exception:
+            pass
 
     def get_participant(self, userid):
         for p in self.participants:
-            if p.userid == userid:
+            if p.userid and userid and p.userid.lower() == userid.lower():
                 return p
 
     def listparticipantuserids(self) -> list:
@@ -43,18 +47,17 @@ class Conversation:
         return userids
 
     def add_realname_to_userid(self, userid, realname):
-        for p in [p for p in self.participants if p.userid == userid]:
+        for p in [p for p in self.participants if p.userid and userid and p.userid.lower() == userid.lower()]:
             p.realname = realname
 
     def add_systemid_to_userid(self, userid, systemid):
-        for p in [p for p in self.participants if p.userid == userid]:
+        for p in [p for p in self.participants if p.userid and userid and p.userid.lower() == userid.lower()]:
             p.systemid = systemid
 
     def get_realname_from_userid(self, userid) -> str:
-        for p in [p for p in self.participants if p.userid == userid]:
+        for p in [p for p in self.participants if p.userid and userid and p.userid.lower() == userid.lower()]:
             return p.realname  # returns '' if not previously set using add_realname_to_userid()
-        else:
-            return ''
+        return ''
 
     def add_message(self, message):
         self.messages.append(message)
@@ -67,27 +70,33 @@ class Conversation:
 
     def set_local_account(self, userid):
         self.localaccount = userid
-        for p in [p for p in self.participants if p.userid == userid]:
-            p.position = 'local'
+        for p in self.participants:
+            try:
+                if p.userid and userid and p.userid.lower() == userid.lower():
+                    p.position = 'local'
+            except Exception:
+                pass
 
     def set_remote_account(self, userid):
         self.remoteaccount = userid
-        for p in [p for p in self.participants if p.userid == userid]:
-            p.position = 'remote'
+        for p in self.participants:
+            try:
+                if p.userid and userid and p.userid.lower() == userid.lower():
+                    p.position = 'remote'
+            except Exception:
+                pass
 
     def userid_islocal(self, userid) -> bool:
-        for p in [p for p in self.participants if p.userid == userid]:
-            if p.position == 'local':
-                return True
-            else:
-                return False
+        for p in self.participants:
+            if p.userid and userid and p.userid.lower() == userid.lower():
+                return p.position == 'local'
+        return False
 
     def userid_isremote(self, userid) -> bool:
-        for p in [p for p in self.participants if p.userid == userid]:
-            if p.position == 'remote':
-                return True
-            else:
-                return False
+        for p in self.participants:
+            if p.userid and userid and p.userid.lower() == userid.lower():
+                return p.position == 'remote'
+        return False
 
 
 class Participant:
@@ -136,9 +145,29 @@ class Attachment:
         self.mimetype: str = ''
 
     def gen_contentid(self):
-        """Generate a contentID hash from the attachment data, should be called after attachment payload changed"""
-        # We want the ContentID to be deterministic based on content, not random (for dupe checking/filtering)
-        self.contentid = hashlib.md5(self.data).hexdigest()
+        """Generate a contentID hash from the attachment data and metadata.
+        Use data, name, and mimetype so that metadata-only attachments produce different IDs.
+        """
+        hasher = hashlib.md5()
+        try:
+            if isinstance(self.data, bytes):
+                hasher.update(self.data)
+            else:
+                hasher.update(b"" if self.data is None else str(self.data).encode('utf-8'))
+        except Exception:
+            try:
+                hasher.update(b"" if self.data is None else bytes(self.data))
+            except Exception:
+                pass
+        try:
+            hasher.update((self.name or '').encode('utf-8'))
+        except Exception:
+            pass
+        try:
+            hasher.update((self.mimetype or '').encode('utf-8'))
+        except Exception:
+            pass
+        self.contentid = hasher.hexdigest()
 
     def set_payload(self, bindata):
         """Set the binary payload of the attachment"""
