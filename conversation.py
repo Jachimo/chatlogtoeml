@@ -132,8 +132,20 @@ class Message:
             return self.__dict__ == other.__dict__  # Otherwise, look at dictionaries
 
     def __lt__(self, other):
-        """Define less-than for purposes of sorting Message lists (sorted by date)"""
-        return self.date < other.date  # Default sort by message date/time
+        """Define less-than for purposes of sorting Message lists (sorted by date).
+        Handle missing (None) dates gracefully.
+        """
+        try:
+            if self.date is None and other.date is None:
+                return False
+            if self.date is None:
+                return True
+            if other.date is None:
+                return False
+            return self.date < other.date
+        except Exception:
+            # Fallback to dict-wise comparison to avoid raising during sort
+            return str(self.__dict__) < str(other.__dict__)
 
 
 class Attachment:

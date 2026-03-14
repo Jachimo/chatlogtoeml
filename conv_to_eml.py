@@ -37,10 +37,13 @@ def mimefromconv(conv: conversation.Conversation, no_background: bool = False) -
         error_msg = 'Conversation does not appear to contain any Messages; exiting.'
         logging.warning(error_msg)
         raise ValueError(error_msg)
-    if len(conv.listparticipantuserids()) < 2:
-        error_msg = 'Conversation does not have enough Participants to construct email-like document; exiting.'
+    if len(conv.listparticipantuserids()) == 0:
+        error_msg = 'Conversation does not have any Participants; exiting.'
         logging.warning(error_msg)
         raise ValueError(error_msg)
+    if len(conv.listparticipantuserids()) == 1:
+        # Allow single-participant conversations (e.g., exported threads with only local entries)
+        logging.warning('Conversation has only one participant; constructing EML with that participant as both From and To.')
 
     # Create a base message object for the entire conversation's components
     msg_base = MIMEMultipart('related')
@@ -95,10 +98,17 @@ def mimefromconv(conv: conversation.Conversation, no_background: bool = False) -
         filenameuserid = conv.filenameuserid  # used parsed version if it is set (useful for Facebook logs)
     else:
         filenameuserid = conv.origfilename.split(' (')[0]
-    if conv.startdate:
-        header_date = conv.startdate
-    else:
-        header_date = conv.getoldestmessage().date
+    # Determine header_date robustly; fallback to now (UTC) if necessary
+    header_date = None
+    try:
+        if conv.startdate:
+            header_date = conv.startdate
+        else:
+            header_date = conv.getoldestmessage().date
+    except Exception:
+        header_date = None
+    if not header_date or not hasattr(header_date, 'timetuple'):
+        header_date = datetime.datetime.now(datetime.timezone.utc)
     if conv.service:
         header_service = conv.service
     else:
@@ -111,10 +121,15 @@ def mimefromconv(conv: conversation.Conversation, no_background: bool = False) -
     msg_base['Date'] = format_datetime(header_date)
     msg_base['Subject'] = f'{header_service} with {header_withname} on {header_date.strftime("%a, %b %e %Y")}'
 
-    # Determine date format to use in logs
-    if (conv.getyoungestmessage().date - conv.getoldestmessage().date) > datetime.timedelta(days=1):
-        datefmt = '%D %r'
-    else:
+    # Determine date format to use in logs - be robust to missing dates
+    try:
+        youngest = conv.getyoungestmessage().date
+        oldest = conv.getoldestmessage().date
+        if youngest and oldest and (youngest - oldest) > datetime.timedelta(days=1):
+            datefmt = '%D %r'
+        else:
+            datefmt = '%r'
+    except Exception:
         datefmt = '%r'
 
     # produce a text version of the messages

@@ -37,7 +37,7 @@ def _group_reactions(reaction_list):
         if rtype is None:
             rtype = 'reacted'
         rkey = rtype.lower()
-        actor = r.get('actor') or r.get('sender') or r.get('handle') or 'UNKNOWN'
+        actor = _norm_user(r.get('actor') or r.get('sender') or r.get('handle')) or 'UNKNOWN'
         grouped.setdefault(rkey, []).append(actor)
     return grouped
 
@@ -86,10 +86,36 @@ def _parse_date(datestr):
     if not datestr:
         return None
     try:
-        return dateutil.parser.parse(datestr)
+        dt = dateutil.parser.parse(datestr)
+        # Ensure timezone-aware datetimes for consistent arithmetic
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=datetime.timezone.utc)
+        return dt
     except Exception:
         logging.debug(f'unable to parse date: {datestr}')
         return None
+
+
+def _norm_user(u):
+    """Normalize a user identifier into a simple string.
+
+    Accepts strings or dicts commonly emitted by imessage-exporter and
+    returns a representative string or None.
+    """
+    if not u:
+        return None
+    if isinstance(u, dict):
+        # common keys to try
+        for k in ('id', 'identifier', 'handle', 'address', 'username', 'phone', 'value'):
+            v = u.get(k)
+            if v:
+                return str(v)
+        # fallback to first non-empty value
+        for v in u.values():
+            if v:
+                return str(v)
+        return None
+    return str(u)
 
 
 def _raw_to_message(obj: dict, local_handle: Optional[str]) -> conversation.Message:
@@ -97,12 +123,13 @@ def _raw_to_message(obj: dict, local_handle: Optional[str]) -> conversation.Mess
     m.guid = obj.get('guid', '')
     m.text = obj.get('text') or ''
     m.html = obj.get('html') or ''
-    m.date = _parse_date(obj.get('date'))
+    # ensure messages have a deterministic fallback date (epoch UTC) when unparseable
+    m.date = _parse_date(obj.get('date')) or datetime.datetime.fromtimestamp(0, datetime.timezone.utc)
     # Determine sender
     if obj.get('is_from_me'):
         m.msgfrom = local_handle or 'me'
     else:
-        m.msgfrom = obj.get('sender') or obj.get('handle') or 'UNKNOWN'
+        m.msgfrom = _norm_user(obj.get('sender') or obj.get('handle')) or 'UNKNOWN'
     return m
 
 
@@ -180,12 +207,29 @@ def build_conversation_from_segment(segment: List[dict], chat_identifier: str,
     conv.service = 'iMessage'
     conv.filenameuserid = chat_identifier
 
-    # Build participants set
+    # Build participants set (normalize dict entries into string userids)
     participants = set()
     for msgobj in segment:
         parts = msgobj.get('participants') or []
         for p in parts:
-            participants.add(p)
+            # normalize participant entries to string ids
+            if isinstance(p, dict):
+                pid = None
+                for k in ('id', 'identifier', 'handle', 'address', 'username', 'phone', 'value'):
+                    v = p.get(k)
+                    if v:
+                        pid = str(v)
+                        break
+                if not pid:
+                    # fallback to first non-empty value
+                    for v in p.values():
+                        if v:
+                            pid = str(v)
+                            break
+                if pid:
+                    participants.add(pid)
+            elif p:
+                participants.add(str(p))
     # ensure local_handle present if supplied
     if local_handle:
         participants.add(local_handle)
@@ -244,7 +288,7 @@ def build_conversation_from_segment(segment: List[dict], chat_identifier: str,
         if target_guid is None:
             # Unknown-target reactions -> render as events
             for r in reaction_list:
-                actor = r.get('actor') or r.get('sender') or r.get('handle') or 'UNKNOWN'
+                actor = _norm_user(r.get('actor') or r.get('sender') or r.get('handle')) or 'UNKNOWN'
                 rtype = r.get('reaction_type') or r.get('reaction') or 'reacted'
                 ev = conversation.Message('event')
                 ev.msgfrom = 'System Message'
@@ -274,7 +318,7 @@ def build_conversation_from_segment(segment: List[dict], chat_identifier: str,
         else:
             # Target outside this segment -> emit as event
             for r in reaction_list:
-                actor = r.get('actor') or r.get('sender') or r.get('handle') or 'UNKNOWN'
+                actor = _norm_user(r.get('actor') or r.get('sender') or r.get('handle')) or 'UNKNOWN'
                 rtype = r.get('reaction_type') or r.get('reaction') or 'reacted'
                 ev = conversation.Message('event')
                 ev.msgfrom = 'System Message'
