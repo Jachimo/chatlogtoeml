@@ -22,6 +22,66 @@ import html as _html
 import conversation
 
 
+# Reaction rendering utilities
+_REACTION_EMOJI = {
+    'like': '👍', 'love': '❤️', 'laugh': '😂', 'haha': '😂',
+    'dislike': '👎', 'emphasize': '❗', 'question': '❓',
+    'heart': '❤️', 'thumbs_up': '👍', 'thumbs_down': '👎'
+}
+
+
+def _group_reactions(reaction_list):
+    grouped = {}
+    for r in reaction_list:
+        rtype = (r.get('reaction_type') or r.get('reaction') or 'reacted')
+        if rtype is None:
+            rtype = 'reacted'
+        rkey = rtype.lower()
+        actor = r.get('actor') or r.get('sender') or r.get('handle') or 'UNKNOWN'
+        grouped.setdefault(rkey, []).append(actor)
+    return grouped
+
+
+def _render_reactions_html(reaction_list):
+    grouped = _group_reactions(reaction_list)
+    parts = []
+    for rtype, actors in grouped.items():
+        emoji = _REACTION_EMOJI.get(rtype)
+        title = _html.escape(', '.join(actors))
+        if emoji:
+            if len(actors) > 1:
+                parts.append(f'<span class="reaction" title="{title}">{emoji}×{len(actors)}</span>')
+            else:
+                parts.append(f'<span class="reaction" title="{title}">{emoji}</span>')
+        else:
+            lbl = _html.escape(rtype)
+            if len(actors) > 1:
+                parts.append(f'<span class="reaction" title="{title}">{lbl}×{len(actors)}</span>')
+            else:
+                parts.append(f'<span class="reaction" title="{title}">{lbl}</span>')
+    if parts:
+        return '<div class="reactions">' + ' '.join(parts) + '</div>'
+    return ''
+
+
+def _render_reactions_text(reaction_list):
+    grouped = _group_reactions(reaction_list)
+    parts = []
+    for rtype, actors in grouped.items():
+        emoji = _REACTION_EMOJI.get(rtype)
+        if emoji:
+            if len(actors) > 1:
+                parts.append(f'{emoji}×{len(actors)} ({",".join(actors)})')
+            else:
+                parts.append(f'{emoji} ({actors[0]})')
+        else:
+            if len(actors) > 1:
+                parts.append(f'{rtype}×{len(actors)} ({",".join(actors)})')
+            else:
+                parts.append(f'{rtype} ({actors[0]})')
+    return ' | '.join(parts) if parts else ''
+
+
 def _parse_date(datestr):
     if not datestr:
         return None
@@ -179,7 +239,7 @@ def build_conversation_from_segment(segment: List[dict], chat_identifier: str,
         if m.guid:
             messages_by_guid[m.guid] = m
 
-    # Process reactions: attach as footnotes to target messages when possible
+    # Process reactions: attach as richer inline HTML to target messages when possible
     for target_guid, reaction_list in reactions.items():
         if target_guid is None:
             # Unknown-target reactions -> render as events
@@ -194,20 +254,23 @@ def build_conversation_from_segment(segment: List[dict], chat_identifier: str,
             continue
         target_msg = messages_by_guid.get(target_guid)
         if target_msg:
-            footnotes = []
-            for r in reaction_list:
-                actor = r.get('actor') or r.get('sender') or r.get('handle') or 'UNKNOWN'
-                rtype = r.get('reaction_type') or r.get('reaction') or 'reacted'
-                footnotes.append(f'{rtype} by {actor}')
-            footnote_text = ' | '.join(footnotes)
-            # Append to HTML if present, otherwise to text
-            if target_msg.html:
-                target_msg.html += f'<div class="reactions">{_html.escape(footnote_text)}</div>'
-            else:
-                if target_msg.text:
-                    target_msg.text += '\n' + footnote_text
+            html_frag = _render_reactions_html(reaction_list)
+            text_frag = _render_reactions_text(reaction_list)
+            if html_frag:
+                if target_msg.html:
+                    target_msg.html += html_frag
                 else:
-                    target_msg.text = footnote_text
+                    # ensure there is an html field so conv_to_eml can render reactions inline
+                    escaped = _html.escape(target_msg.text) if target_msg.text else ''
+                    target_msg.html = escaped + html_frag
+                    if not target_msg.text:
+                        target_msg.text = ''
+            else:
+                # append textual representation
+                if target_msg.text:
+                    target_msg.text += '\n' + text_frag
+                else:
+                    target_msg.text = text_frag
         else:
             # Target outside this segment -> emit as event
             for r in reaction_list:
