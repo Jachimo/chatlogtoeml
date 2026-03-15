@@ -26,6 +26,32 @@ except Exception:
 bgcssregex = re.compile(r'(?:background(?:-color)?\s*:\s*[^;]+;)', re.I)
 
 
+def _determine_fakedomain(conv: conversation.Conversation) -> str:
+    """Derive a pseudo-domain from the originating DB basename when available.
+
+    - If conv.source_db_basename contains 'sms' or 'sms.db' -> 'sms.imessage.invalid'
+    - If it contains 'chat' or 'chat.db' -> 'chat.imessage.invalid'
+    - Otherwise fall back to '<service>.<imclient>.invalid'
+    """
+    import os
+    try:
+        basename = ''
+        if getattr(conv, 'source_db_basename', None):
+            basename = str(conv.source_db_basename).lower()
+        elif getattr(conv, 'origfilename', None):
+            basename = os.path.basename(conv.origfilename).lower()
+    except Exception:
+        basename = ''
+    if basename:
+        if 'sms.db' in basename or basename.startswith('sms'):
+            return 'sms.imessage.invalid'
+        if 'chat.db' in basename or basename.startswith('chat'):
+            return 'chat.imessage.invalid'
+    svc = (conv.service or 'conversation').lower()
+    cl = (conv.imclient or 'client').lower()
+    return f'{svc}.{cl}.invalid'
+
+
 def mimefromconv(conv: conversation.Conversation, no_background: bool = False) -> MIMEMultipart:
     """Now we take the Conversation object and make a MIME email message out of it..."""
     # Do some sanity-checking on the input Conversation and skip trivial (no message contents) logs
@@ -51,7 +77,7 @@ def mimefromconv(conv: conversation.Conversation, no_background: bool = False) -
     # Then a sub-part for the two alternative text and HTML components
     msg_texts = MIMEMultipart('alternative')
 
-    fakedomain = f'{conv.service.lower()}.{conv.imclient.lower()}.invalid'  # non-routable fake domain
+    fakedomain = _determine_fakedomain(conv)  # derived pseudo-domain (sms/chat or fallback svc.imclient.invalid)
 
     # Construct 'From' header
     # Prefer participant marked 'local', fall back to conv.localaccount or first participant

@@ -21,6 +21,8 @@ class Conversation:
         self.enddate: datetime = False
         self.messages: list = []  # List of Message objects
         self.hasattachments: bool = False  # Flag to indicate that 1 or more message contains an attachment
+        # Optional: basename of originating DB (e.g., 'sms.db' or 'chat.db') used to derive pseudo-domain
+        self.source_db_basename: str = ''
 
     def add_participant(self, userid):
         # Avoid duplicates (case-insensitive)
