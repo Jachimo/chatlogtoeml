@@ -303,6 +303,16 @@ Failures logged to stderr and to `failed_{date}.log` in the output directory.
 
 ## Deliverables
 
+### Recent updates (2026-03-16)
+- Pseudo-domain logic changed: `conv_to_eml` now derives the pseudo-domain from `Conversation.source_db_basename` or the basename of `conv.origfilename`. `sms.db` → `sms.imessage.invalid`; `chat.db` → `chat.imessage.invalid`. Added unit tests: `tests/test_fakedomain.py`.
+- Unit tests run locally: new fakedomain tests pass. NDJSON verification run and summary saved to `.copilot/ndjson-test-summary-2026-03-15.md`.
+- README updated to document NDJSON usage and the pseudo-domain behavior (NDJSON docs placed above the Adium section).
+
+Next steps:
+- Ensure parsers set `conv.source_db_basename` when DB-origin metadata is available in NDJSON exports.
+- Add tests for text-encoding edge cases discovered during verification (object-replacement characters, emoji-only messages).
+- Improve logging when `--embed-attachments` is requested but payloads are unavailable (consider adding `X-Original-Attachment-Path` header for missing payloads).
+
 - Modified `conv_to_eml.py` (CSS path + signature; no behavior change for existing callers).
 - Modified `adiumToEml.py` (updated call site only).
 - New `imessage_json.py` (parser + segmentation).

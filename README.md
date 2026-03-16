@@ -6,6 +6,29 @@ Originally known as "adiumToEML", but now expanded to handle other types of logs
 
 ## Usage
 
+## NDJSON (imessage-exporter) support
+
+This repository includes jsonToEml.py — a CLI to convert imessage-exporter NDJSON exports into RFC822 .eml files. It preserves metadata (handles, display names, chat GUIDs, timestamps, reactions and attachment metadata) and can embed attachments when requested.
+
+Basic usage:
+
+$ python3 jsonToEml.py <input.ndjson> <outdir> [--local-handle <handle>] [--stream] [--embed-attachments] [--no-background] [--clobber]
+
+Options:
+- --local-handle: phone/email of the local account to use for the From: header; if omitted, a heuristic is used.
+- --stream: shard the input to disk to avoid large memory use (auto-enabled for files >50MiB).
+- --stream-tempdir: directory to store shards (default: temporary directory removed after processing).
+- --embed-attachments: read local attachment files and embed binary payloads into .eml (may increase disk/memory usage). When payloads are unavailable, the attachment metadata and path are preserved and a warning is logged.
+- --no-background: strip background styles from generated HTML.
+- --clobber: overwrite existing .eml outputs.
+
+Notes:
+- Message-ID / References pseudo-domain is derived from the originating DB basename when available (parsers should set `conv.source_db_basename`):
+  - `sms.db` → `sms.imessage.invalid`
+  - `chat.db` → `chat.imessage.invalid`
+  - otherwise: `<service>.<imclient>.invalid` (fallback)
+- Run unit tests: $ python3 -m unittest discover -v
+
 ## Adium Log Conversion
 
 From within the adiumtoeml directory:   
