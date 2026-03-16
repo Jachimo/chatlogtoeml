@@ -157,6 +157,7 @@ class Attachment:
         self.data = b''
         self.contentid: str = ''
         self.mimetype: str = ''
+        self.orig_path: str = ''  # original file path from the source NDJSON (if available)
 
     def gen_contentid(self):
         """Generate a contentID hash from the attachment data and metadata.

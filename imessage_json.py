@@ -268,8 +268,17 @@ def build_conversation_from_segment(segment: List[dict], chat_identifier: str,
                         att.data = af.read()
                 except Exception:
                     att.data = b''
+                    logging.warning('Failed to read attachment path: %s', path)
             else:
                 att.data = b''
+                if path:
+                    # record original path so we can annotate the resulting EML when embedding failed
+                    try:
+                        att.orig_path = path
+                    except Exception:
+                        pass
+                    if embed_attachments:
+                        logging.warning('Attachment path missing or unreadable; not embedded: %s', path)
             att.gen_contentid()
             m.attachments.append(att)
             conv.hasattachments = True

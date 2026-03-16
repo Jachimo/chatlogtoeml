@@ -278,6 +278,13 @@ def mimefromconv(conv: conversation.Conversation, no_background: bool = False) -
                             except Exception:
                                 pass
                         msg_base.attach(attachment_part)  # attach to the top-level object, multipart/related
+                    else:
+                        # No binary payload to attach. If original path is known, add a header to indicate missing payload
+                        if getattr(att, 'orig_path', None):
+                            try:
+                                msg_base.add_header('X-Original-Attachment-Path', att.orig_path)
+                            except Exception:
+                                logging.debug('Failed to add X-Original-Attachment-Path header for %s', att.orig_path)
             line.append('</p>')
             html_lines.append(''.join(line))  # join line components without spaces
     html_lines.append('</body>')
