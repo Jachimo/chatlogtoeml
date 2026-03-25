@@ -1,3 +1,9 @@
+#!/usr/bin/env python3
+import sys
+
+if sys.version_info < (3, 8):
+    raise SystemExit("This fixture generator requires Python 3.8+")
+
 import sqlite3
 from pathlib import Path
 import base64
