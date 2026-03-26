@@ -1,127 +1,79 @@
 # chatlogtoeml
 
-Conversion tool to migrate various flavors of instant messaging and SMS logs to RFC822 .eml files for archiving.
-
-Originally known as "adiumToEML", but now expanded to handle other types of logs, including the output of [imessage-exporter](https://github.com/Jachimo/imessage-exporter).
+Conversion tool to migrate various instant messaging, SMS, and iMessage log exports into RFC822 `.eml` files for archiving. Shared logic lives in the `chatlogtoeml` package, with thin CLI wrappers under `bin/`.
 
 ## Usage
 
-## NDJSON (imessage-exporter) support
+### `chat_convert` (Adium and XML/HTML logs)
 
-This repository includes jsonToEml.py — a CLI to convert imessage-exporter NDJSON exports into RFC822 .eml files. It preserves metadata (handles, display names, chat GUIDs, timestamps, reactions and attachment metadata) and can embed attachments when requested.
+```
+./bin/chat_convert path/to/log.chatlog [outputdir] [--clobber] [--attach] [--no-background] [--debug]
+```
 
-Basic usage:
+Detects `.chatlog` bundles, `.xml`, `.AdiumHTMLLog`, or `.html`, runs the appropriate parser, and writes a `.eml` file with deterministic `Message-ID`/`References` headers. Use `--attach` to embed the original log, `--clobber` to overwrite, and `--no-background` to strip background styling. The helper script `./adium_convert.sh` now calls `bin/chat_convert` when processing directories.
 
-$ python3 jsonToEml.py <input.ndjson> <outdir> [--local-handle <handle>] [--stream] [--embed-attachments] [--no-background] [--clobber]
+### `json_to_eml` (imessage-exporter NDJSON)
 
-Options:
-- --local-handle: phone/email of the local account to use for the From: header; if omitted, a heuristic is used.
-- --stream: shard the input to disk to avoid large memory use (auto-enabled for files >50MiB).
-- --stream-tempdir: directory to store shards (default: temporary directory removed after processing).
-- --embed-attachments: read local attachment files and embed binary payloads into .eml (may increase disk/memory usage). When payloads are unavailable, the attachment metadata and path are preserved and a warning is logged.
-- --no-background: strip background styles from generated HTML.
-- --clobber: overwrite existing .eml outputs.
+```
+./bin/json_to_eml <input.ndjson> <outdir> [--local-handle <handle>] [--idle-hours N] [--min-messages N] [--max-messages N] [--max-days N] [--stream] [--stream-tempdir DIR] [--embed-attachments] [--no-background] [--clobber] [--debug]
+```
 
-Notes:
-- Message-ID / References pseudo-domain is derived from the originating DB basename when available (parsers should set `conv.source_db_basename`):
-  - `sms.db` → `sms.imessage.invalid`
-  - `chat.db` → `chat.imessage.invalid`
-  - otherwise: `<service>.<imclient>.invalid` (fallback)
-- Run unit tests: $ python3 -m unittest discover -v
+Groups records by chat identifier, optionally streams per-chat shards for large files, segments conversations by idle gaps/size/duration, and yields individual `.eml` segments enriched with metadata (chat GUID, service, segment indexes, reactions, attachments, etc.). Streaming is auto-enabled for files larger than 50 MiB. Embedded attachments and background stripping are optional.
 
-## Adium Log Conversion
+### Testing
 
-From within the adiumtoeml directory:   
-`$ ./adiumToEml.py chatlogfile [outputdir]`
+Run the unit test suite with:
 
-If `outputdir` is not specified, the working directory will be used instead.
+```
+python3 -m unittest discover -s tests -v
+```
 
-In most cases, you probably want to call this from a wrapper script, e.g. with `find` and `xargs` in order to run it on the entire Adium Logs directory.
-(Usually `~/Documents/Adium/Logs` or potentially also `~/Library/Application Support/Adium/Logs`, but could be placed elsewhere.)
+## Sample data layout
 
-Most Adium logs end in either `.AdiumHTMLLog` or `.chatlog`, although the tool will also process files ending in `.html` or `.xml`.
+The `samples/` directory keeps fixtures grouped by ingestion format so you can
+run the converter against the right kind of input without hunting through a
+heterogeneous blob.
 
-Written and tested using Python 3.9.
+- `samples/adiumxml/` holds XML/.chatlog exports from Adium
+- `samples/adiumhtml/` keeps the legacy Adium HTML log snapshot
+- `samples/ndjson/` stores the small `sample.ndjson` fixture and the
+  `ndjson/realworld/klmyers_ipad/` directory with attachments used by the
+  streaming NDJSON importer
+- `samples/databases/ios/` and `samples/databases/macos/` contain the stub
+  SQLite Messages database fixtures plus their attachments
+- `samples/eml/` shows what a rendered `.eml` should look like
+
+The companion `samples/SAMPLEDATA.md` describes the layout, privacy policy,
+and generator scripts in more detail.
 
 ## Dependencies
 
-A few packages not included in Python's standard library are required for operation, and can be installed using `pip`.
-These are:
-
-* `pytz` - timezone handling support
-* `py-dateutil` - extensions to the python `datetime` module, including timezone-aware date parsing
+Install runtime dependencies with `pip install pytz python-dateutil`.
 
 ## Known Bugs / Limitations
 
 ### Incomplete Adium Facebook Chat Logs
 
-Adium logs of Facebook chat conversations (from the period when Facebook was using an open standards, XMPP-compatible chat service) seem to be frequently malformed.
-Although the tool attempts to link Facebook user IDs to real names (stored as 'aliases' in the XML), this is only occasionally possible.
-Also, some logs appear to only contain one side (usually the remote) of the conversation, for reasons that are not clear.
-
-A possible cause is related to how Facebook handled multiple-device support: received messages were likely 'broadcast' to all signed-in devices, but transmitted messages from a device other than the computer running Adium were not re-sent out by Facebook's servers, and thus are not included in the Adium log.
+Adium logs from the Facebook XMPP era are sometimes malformed, contain only one side of the conversation, or omit participants. The XML parser attempts to link Facebook IDs to aliases but cannot always succeed.
 
 ### Malformed Adium XML Logs
 
-It appears that some versions of Adium produced malformed XML log files.
-Missing `</chat>` tags are particularly common in some periods (most are dated around early 2003, and the issue was apparently fixed by mid-2004).
-These files can be easily fixed using the Mac OS `sed` command:
-
-    sed -i '.bkup' 's/<\/?xml>/<\/chat>/' broken.chatlog
-
-A small Bash script which runs this command against a list of files is included in the `/extras` directory as `fix_xml_close.sh`.
-It is designed to be run against the `failed_YYYY-MM-DD.log` files produced by the `bulk_convert.sh` script.
-Original files are preserved with the extension `.bkup` added, so they won't be picked up by the processor on future runs.
+Some logs contain missing closing tags. Use `extras/fix_xml_close.sh` (which operates on the `failed_YYYY-MM-DD.log` files emitted by the bulk converter) to patch `</chat>` tags before rerunning.
 
 #### Illegal XML Characters
 
-Despite writing files that claim to be well-formed XML 1.0, it appears that some versions of Adium did not sanitize their inputs very well.
-The existence of ASCII control characters (such as hex 0x19, reportedly misused by Microsoft products for 'smart single quote' and seen in copied/pasted content) are especially problematic, as they terminate XML parsing when encountered, and the normal Python `.encode()` and `.decode()` tricks don't seem to strip them.
-The `adium_xml.py` input processor attempts to strip these characters if initial XML parsing fails.
+Adium sometimes wrote unescaped ASCII control characters. The XML parser sanitizes input by stripping problematic ranges when `xml.dom.minidom` fails.
 
 ### Bad Log File Names
 
-Examples have been found of Adium HTML-based log files with strange separator characters in the date written into the filename.
-(An example is `20050219` on an AdiumHTMLLog file.)
-These files will cause processing errors and should be renamed by hand, replacing the non-ASCII chars with dashes.
+Files with non-ASCII or odd separators in their filenames may break parsing. Rename them to use dashes before converting.
 
 ### Trivial Logs
 
-"Trivial" logs, meaning those without any actual human-generated messages and only system/status messages, do not have enough information to be usefully represented as MIME .eml documents.
-As a result, they are skipped when processing.
-It is possible that a future version of this converter might be able to process them into a different output format, such as JSON.
-
-## Licensing
-
-See the LICENSE file for more information.
-
-Released under the GPL v2 or later. Contains various components licensed under the GPL and MIT licenses.
-
-Modifications and improvements are welcomed and encouraged.
-Please feel free to fork this project; pull requests will be considered as long as they do not break core functionality.
-
-This software is provided without warranty and without any representations as to its functionality for a particular purpose.
-End-user support is not available. 
-
-## NDJSON (imessage-exporter) support
-
-This repository now includes jsonToEml.py, a CLI to convert imessage-exporter NDJSON exports into RFC822 .eml files. It preserves metadata and attempts to render reactions and attachments.
-
-Basic usage:
-
-$ python3 jsonToEml.py <input.ndjson> <outdir> [--local-handle <handle>] [--stream] [--embed-attachments] [--no-background] [--clobber]
-
-Options:
-- --local-handle: specify the local user's handle (phone/email) to use for the From: header; if omitted, a heuristic is used.
-- --stream: shard the input to disk to avoid large memory use (auto-enabled for files >50MiB).
-- --stream-tempdir: directory to store shards (default: temporary directory removed after processing).
-- --embed-attachments: read local attachment files and embed binary payloads into .eml (may increase disk/memory usage).
-- --no-background: strip background styles from generated HTML.
-
-Run unit tests:
-
-$ python3 -m unittest discover -v
+Logs without any human-generated content are skipped; they could be processed into a different format in future versions.
 
 ## References
 
-- Information on the various 'flavors' of Adium log formats can be found [in this Github Gist](https://gist.github.com/kadin2048/ffe811e56c8e8fb6ceb8bade09439341).
+- `extras/format-html` contains original Adium transformation helpers.
+- Bulk conversion helper: `./adium_convert.sh`.
+- Use `./bin/chat_convert` or `./bin/json_to_eml` from the repository root so `converted.css` is found relative to the package.

@@ -7,7 +7,7 @@ import pytz
 from typing import TextIO
 import re
 
-import conversation
+from .. import conversation
 
 doctype: str = '<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">\n'
 localtz: str = 'America/New_York'  # timezone that chat logs were created in (since no tz in HTML logs)

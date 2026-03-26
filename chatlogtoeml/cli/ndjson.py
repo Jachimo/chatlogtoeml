@@ -1,18 +1,12 @@
-#!/usr/bin/env python3
-"""CLI to convert imessage-exporter NDJSON files to .eml using conversation/conv_to_eml pipeline
+"""NDJSON CLI that reuses the shared parser and conversion logic."""
 
-This script is intentionally small: it parses the NDJSON into Conversation objects (imessage_json.parse_file),
-then reuses conv_to_eml.mimefromconv to produce EML files.
-"""
-
-import os
-import sys
 import argparse
 import logging
-from pathlib import Path
+import os
+import sys
 
-import conv_to_eml
-import imessage_json
+from .. import conv_to_eml
+from ..parsers import imessage_json
 
 
 def sanitize_chat_id(chat_id: str, maxlen: int = 64) -> str:
@@ -46,17 +40,18 @@ def main(argv=None) -> int:
 
     logging.basicConfig(level=logging.DEBUG if args.debug else logging.INFO)
 
-    if not os.path.isfile(args.infile):
-        logging.critical('Input file not found: %s', args.infile)
+    infile = args.infile
+    outdir = args.outdir
+    if not os.path.isfile(infile):
+        logging.critical('Input file not found: %s', infile)
         return 1
-    if not os.path.isdir(args.outdir):
-        logging.critical('Output dir (%s) specified but not a directory.', args.outdir)
+    if not os.path.isdir(outdir):
+        logging.critical('Output dir (%s) specified but not a directory.', outdir)
         return 1
 
-    # determine streaming strategy
     stream = args.stream
     try:
-        fsize = os.path.getsize(args.infile)
+        fsize = os.path.getsize(infile)
     except Exception:
         fsize = 0
     AUTOSTREAM_THRESHOLD = 50 * 1024 * 1024
@@ -65,35 +60,49 @@ def main(argv=None) -> int:
         logging.info('Input file large (%d bytes) - enabling streaming shards', fsize)
 
     idx_counters = {}
-    for conv in imessage_json.parse_file(args.infile, local_handle=args.local_handle,
-                                        idle_hours=args.idle_hours, min_messages=args.min_messages,
-                                        max_messages=args.max_messages, max_days=args.max_days,
-                                        stream=stream, stream_dir=args.stream_tempdir, embed_attachments=args.embed_attachments):
-        # compose output filename
+    for conv in imessage_json.parse_file(
+        infile,
+        local_handle=args.local_handle,
+        idle_hours=args.idle_hours,
+        min_messages=args.min_messages,
+        max_messages=args.max_messages,
+        max_days=args.max_days,
+        stream=stream,
+        stream_dir=args.stream_tempdir,
+        embed_attachments=args.embed_attachments,
+    ):
         chat_id = conv.filenameuserid or conv.origfilename or 'chat'
-        if conv.startdate:
-            startdate = conv.startdate
-        else:
+        startdate = conv.startdate
+        if not startdate:
             try:
                 startdate = conv.getoldestmessage().date
             except Exception:
                 startdate = None
         idx = idx_counters.get(chat_id, 0)
-        outname = make_out_filename(chat_id, startdate or (startdate if startdate else ''), idx)
-        outpath = os.path.join(args.outdir, outname)
+        outname = make_out_filename(chat_id, startdate or '', idx)
+        outpath = os.path.join(outdir, outname)
         if os.path.exists(outpath) and not args.clobber:
             logging.warning('Skipping existing file %s (use --clobber to overwrite)', outpath)
+            idx_counters[chat_id] = idx + 1
             continue
         try:
             eml = conv_to_eml.mimefromconv(conv, args.no_background)
         except Exception as e:
             logging.error('Failed to create MIME for chat %s: %s', chat_id, e)
+            idx_counters[chat_id] = idx + 1
             continue
-        # Add NDJSON-specific headers
+
         if conv.filenameuserid:
             eml['X-Chat-Identifier'] = conv.filenameuserid
+        if getattr(conv, 'chat_guid', None):
+            eml['X-Chat-GUID'] = conv.chat_guid
         if hasattr(conv, 'startdate') and conv.startdate:
             eml['X-Segment-Start'] = conv.startdate.isoformat()
+        if conv.messages:
+            eml['X-Segment-Messages'] = str(len(conv.messages))
+        imsvc = getattr(conv, 'service', None)
+        if imsvc:
+            eml['X-iMessage-Service'] = imsvc
         eml['X-Converted-By'] = os.path.basename(sys.argv[0])
 
         try:

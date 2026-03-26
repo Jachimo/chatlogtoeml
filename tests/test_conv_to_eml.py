@@ -1,7 +1,7 @@
 import unittest
-import conversation
-import conv_to_eml
 import datetime
+
+from chatlogtoeml import conversation, conv_to_eml
 
 class TestConvToEmlEdgeCases(unittest.TestCase):
     def test_userid_case_insensitive(self):

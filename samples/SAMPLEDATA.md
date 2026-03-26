@@ -1,16 +1,29 @@
 # SAMPLE DATA
 
-This directory contains sample data for testing the "chatlogtoeml"
-tools.
+This directory contains the fixtures and sample inputs that power the
+`chatlogtoeml` converters. The structure is organized by ingestion format so you
+can quickly find the kind of data you need:
 
-It contains subfolders by ingestion format, e.g. "adium" for Adium
-format log files, "ndjson" for Newline Delimited JSON files, etc.
+- `adiumxml/` keeps XML-based Adium logs (the `.chatlog` bundle exported from
+  Adium or its raw XML equivalents).
+- `adiumhtml/` stores an example Adium HTML log for regression testing the old
+  HTML parser.
+- `ndjson/` holds the small `sample.ndjson` fixture plus a larger
+  `ndjson/realworld/klmyers_ipad/` directory with attachments used by the
+  streaming NDJSON importer.
+- `databases/ios/` and `databases/macos/` contain the synthetic Messages
+  database files and their attachments that illustrate how the stub fixtures in
+  `tools/generate_*` behave.
+- `eml/` keeps a pre-rendered `.eml` output so you can inspect the formatting
+  expected by the converters.
+
+See `APPLE_DB_NOTES.md` for additional details about the database fixtures.
 
 **Data Privacy Note:**
 
 Only synthetic or **thoroughly redacted** files should be committed; scrub all
-personal information including human names, screennames, account names
-/ login names, system hostnames, FQDNs, routable IP addresses, etc.
+personal information including human names, screennames, account names /
+login names, system hostnames, FQDNs, routable IP addresses, etc.
 
 ## Test fixtures
 

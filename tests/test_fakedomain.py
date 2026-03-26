@@ -1,8 +1,7 @@
 import unittest
 import datetime
 
-import conversation
-import conv_to_eml
+from chatlogtoeml import conversation, conv_to_eml
 
 
 class TestFakeDomain(unittest.TestCase):

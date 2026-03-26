@@ -9,8 +9,8 @@ import xml.dom.minidom
 import re
 from typing import BinaryIO
 
-import conversation
-import adium_html
+from .. import conversation
+from . import adium_html
 
 
 def toconv(infile: BinaryIO) -> conversation.Conversation:

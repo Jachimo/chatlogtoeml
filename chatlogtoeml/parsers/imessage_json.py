@@ -19,7 +19,7 @@ import tempfile
 import hashlib
 import html as _html
 
-import conversation
+from .. import conversation
 
 
 # Reaction rendering utilities

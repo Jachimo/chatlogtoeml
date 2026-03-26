@@ -16,10 +16,16 @@
       "reason": "Converters must be run from the repository root or ensure converted.css is present in the CWD unless code is changed."
     },
     {
+      "subject": "chat_convert",
+      "fact": "bin/chat_convert is the Adium/XML/HTML CLI and accepts --clobber, --attach, --no-background, and --debug.",
+      "citations": "README.md:7-14",
+      "reason": "Documents how to run the legacy converter with the new script name."
+    },
+    {
       "subject": "ndjson_cli",
-      "fact": "jsonToEml.py is the NDJSON CLI; supports --stream, --stream-tempdir, --embed-attachments, --local-handle, --no-background, --clobber",
-      "citations": "README.md:83-96, jsonToEml.py",
-      "reason": "How to run the NDJSON converter and available flags for streaming and attachment embedding."
+      "fact": "bin/json_to_eml is the NDJSON CLI; supports --stream, --stream-tempdir, --embed-attachments, --local-handle, --no-background, --clobber, and segmentation options (idle-hours/max-messages/max-days).",
+      "citations": "README.md:15-29",
+      "reason": "Explains how to run the NDJSON converter and available flags for streaming and attachment embedding."
     },
     {
       "subject": "date_policy",
@@ -41,8 +47,8 @@
     },
     {
       "subject": "streaming",
-      "fact": "Streaming mode shards NDJSON into per-chat temporary files to avoid large memory usage; auto-enabled for large files",
-      "citations": "imessage_json.py:parse_file (stream mode) and jsonToEml.py",
+      "fact": "Streaming mode shards NDJSON into per-chat temporary files to avoid large memory usage; auto-enabled for large files.",
+      "citations": "imessage_json.py:parse_file (stream mode) and chatlogtoeml/cli/ndjson.py",
       "reason": "Important for processing large exports without OOM."
     },
     {

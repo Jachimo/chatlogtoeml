@@ -10,7 +10,7 @@ from email.utils import format_datetime
 import re
 import logging
 
-import conversation
+from . import conversation
 
 
 # CSS for styling the HTML part of the message

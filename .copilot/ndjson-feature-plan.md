@@ -2,7 +2,7 @@ NDJSON (imessage-exporter) → EML Feature Plan
 
 Purpose
 -------
-Add a robust, well-tested NDJSON ingestion path that produces RFC822 .eml files like the existing Adium converter. Preserve all metadata, avoid regressions in Adium paths, and provide a separate CLI entrypoint (jsonToEml.py).
+Add a robust, well-tested NDJSON ingestion path that produces RFC822 .eml files like the existing Adium converter. Preserve all metadata, avoid regressions in Adium paths, and provide a separate CLI entrypoint (`bin/json_to_eml`).
 
 Goals
 -----
@@ -14,7 +14,7 @@ Goals
   - Renders reactions inline (HTML badges) and provides text fallbacks
   - Normalizes participant representations and preserves display names
   - Produces Conversation objects usable by conv_to_eml.mimefromconv
-- Provide jsonToEml.py CLI with streaming/shard support for very large NDJSON files.
+- Provide `bin/json_to_eml` CLI with streaming/shard support for very large NDJSON files.
 
 Design decisions and conventions
 --------------------------------
@@ -23,7 +23,7 @@ Design decisions and conventions
 - Participant normalization: accept strings or dicts. Extract canonical id from keys in order: id, identifier, handle, address, username, phone, value. Fallback to the first non-empty dict value, or stringified representation. Always add participants to Conversation as strings.
 - Reactions: group reactions by type and actors; render as inline HTML badges (emoji×count) where emoji mapping exists and fallback to textual label. If the reaction references a message GUID in the same segment, append HTML/text to the target message; otherwise emit a system event message.
 - Streaming: shard large NDJSON into per-chat temp files (safe filenames using hash). Process shards sequentially to control memory usage. Default auto-stream threshold: 50 MiB (tunable).
-- CLI flags (jsonToEml.py): --stream, --stream-tempdir, --embed-attachments, --local-handle, --no-background, --clobber, --debug.
+- CLI flags (`bin/json_to_eml`): --stream, --stream-tempdir, --embed-attachments, --local-handle, --no-background, --clobber, --debug.
 - EML generation: conv_to_eml.mimefromconv(conv, no_background=False) is the stable API. It loads converted.css from module directory so converters can be run from other CWDs.
 
 Implementation notes / code pointers
@@ -45,10 +45,10 @@ Testing
 - Unit tests live under tests/
   - tests/test_imessage_json.py: streaming, reactions, embed-attachments
   - tests/test_conv_to_eml.py: CSS stripping, content-id uniqueness, reaction HTML preservation, case-insensitive participant matching
-- Run tests with: python3 -m unittest tests/test_imessage_json.py tests/test_conv_to_eml.py
-- For local validation with real exports (do NOT commit real data):
-  1. Copy NDJSON files into a temporary local folder (e.g., samples/realworld/<export>/). Do NOT add to git.
-  2. Run: python3 jsonToEml.py <ndjson-file> <outdir> --stream --local-handle <your-handle> --embed-attachments (optional)
+- Run tests with: python3 -m unittest discover -s tests -v
+- For local validation with exports you don’t commit:
+  1. Copy NDJSON files into a temporary local folder (e.g., samples/ndjson/realworld/<export>/ or a path outside the repo). Do NOT add to git.
+  2. Run: python3 bin/json_to_eml <ndjson-file> <outdir> --stream --local-handle <your-handle> --embed-attachments (optional)
   3. Inspect resulting .eml files in the outdir. Use an MUA or 'less' to check headers, HTML rendering, attachments, and reactions.
 
 Edge cases and policy decisions
@@ -60,7 +60,7 @@ Edge cases and policy decisions
 Deliverables (current)
 ----------------------
 - imessage_json.py: NDJSON parser with streaming, normalization, reaction rendering, embed_attachments.
-- jsonToEml.py: CLI for NDJSON -> EML with streaming and flags.
+- `bin/json_to_eml`: CLI for NDJSON -> EML with streaming and flags.
 - conv_to_eml.py, conversation.py: hardened to tolerate missing dates and participant edge cases; CSS loading unchanged.
 - Unit tests covering reactions, streaming, attachment embedding, and conv_to_eml edge cases.
 - Documentation: README update and this plan (file stored here).
@@ -74,7 +74,7 @@ Next steps / TODOs
 
 Contact / context for future AI
 ------------------------------
-- Key files: imessage_json.py, jsonToEml.py, conv_to_eml.py, conversation.py, converted.css
+- Key files: imessage_json.py, `bin/json_to_eml`, conv_to_eml.py, conversation.py, converted.css
 - Tests: tests/test_imessage_json.py, tests/test_conv_to_eml.py
 - To extend: follow build_conversation_from_segment to create Conversation objects; then call conv_to_eml.mimefromconv() to obtain MIME object and write as .eml using .as_bytes().
 

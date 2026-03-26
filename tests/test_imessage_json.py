@@ -3,7 +3,7 @@ import tempfile
 import os
 import json
 
-import imessage_json
+from chatlogtoeml.parsers import imessage_json
 
 
 class TestReactions(unittest.TestCase):

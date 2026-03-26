@@ -1,10 +1,10 @@
 # Apple Messages databases (`sms.db` on iOS, `chat.db` on macOS) — ingestion notes
 
-This document summarizes **practical** information for implementing an importer that converts Apple Messages databases into a **human-readable HTML transcript** (and/or into `.eml` email messages), optionally bundling or linking **attachments** from a provided attachments directory.
+This document summarizes information for implementing an importer that converts Apple Messages databases into human-readable HTML transcripts (and from there into `.eml` email messages), optionally bundling or linking attachments from a provided Attachments directory.
 
-It is written to be **AI-readable** and implementation-oriented.
+It is largely AI-written, and designed to be **AI-readable** and implementation-oriented.
 
-> Scope: This is not a forensic guide, and it does not attempt to reproduce every schema detail for every OS version. Apple’s schema changes over time. The recommended approach is **schema feature-detection** (check which tables/columns exist and adapt).
+> Scope: This does not attempt to reproduce every schema detail for every OS version. Apple’s schema changes over time. The recommended approach is **schema feature-detection** (check which tables/columns exist and adapt).
 
 ---
 
@@ -252,6 +252,14 @@ If committing sample DBs into a public repo:
 ## 9. Suggested minimal SQL queries (generic patterns)
 
 These are **patterns**, not guaranteed exact for every schema.
+
+For historical context, older iOS 6-era parsers (e.g., `iphone_message_parser` by jsharkey13) used a much simpler schema:
+- Only `handle` and `message` tables were validated.
+- Messages were read via `SELECT ROWID, handle_id, is_from_me, date, text FROM message ORDER BY handle_id`.
+- Threads were grouped by consecutive `handle_id` (no chat/message join tables).
+- Timestamps were stored as “Mac time” seconds; converted to Unix with `date + 978307200`.
+- No attachment, reaction, reply, or group chat support.
+Use this as a reminder to keep robust schema detection and branching for modern DBs, not to assume this legacy layout.
 
 ### 9.1 List chats
 ```sql
