@@ -56,7 +56,13 @@ and generator scripts in more detail.
 
 ## Dependencies
 
-Install runtime dependencies with `pip install pytz python-dateutil`.
+Install runtime dependencies with:
+
+```bash
+pip install pytz python-dateutil pytypedstream NSKeyedUnArchiver
+```
+
+`db_to_eml` requires both blob decoders (`pytypedstream` and `NSKeyedUnArchiver`) for MVP-quality parsing of `attributedBody` and `payload_data`.
 
 ## Known Bugs / Limitations
 

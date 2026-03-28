@@ -46,6 +46,31 @@ The generator writes:
 Notes:
 - Uses a fixed base timestamp (2025-01-01 00:00:00 UTC) and 60-second increments.
 
+### BLOB decode matrix fixtures (typedstream / NSKeyedArchiver)
+
+Generate synthetic fixtures that stress message-body decoding paths:
+
+```bash
+python3 tools/generate_blob_case_fixtures.py
+```
+
+This writes:
+
+- `testdata/blob_cases/ios/sms_blob_cases.db`
+- `testdata/blob_cases/ios/sms_blob_cases_expected.json`
+- `testdata/blob_cases/macos/chat_blob_cases.db`
+- `testdata/blob_cases/macos/chat_blob_cases_expected.json`
+
+The matrix includes:
+
+- `text` column present (should win)
+- `text` empty + `attributedBody` streamtyped blob
+- `text` empty + `attributedBody` NSKeyedArchiver binary plist
+- `text`/`attributedBody` empty/bad + `payload_data` NSKeyedArchiver binary plist
+- malformed blobs and fallback ordering checks
+- binary plist and XML plist variants
+- inline replacement marker (`U+FFFC`) preservation
+
 ### MacOS Messages fixture (`chat.db` + attachments)
 
 Generate the synthetic database and attachments with:
@@ -93,9 +118,9 @@ Behavior and attachment resolution:
 
 - Attachments not embedded: confirm the path recorded in the DB exists from the
   repository CWD or pass `--attachment-root` to remap attachment locations.
-- Missing or garbled message text: many real DBs store rich `attributedBody`
-  typedstream blobs. Typedstream parsing is not implemented yet — expected
-  fallbacks are provided but may lose formatting or embedded inline objects.
+- Missing or garbled message text: ensure required decoder dependencies are
+  installed: `pytypedstream` and `NSKeyedUnArchiver`. These are required by the
+  Apple DB parser to decode typedstream and binary plist message-body BLOBs.
 
 ## Other fixtures
 

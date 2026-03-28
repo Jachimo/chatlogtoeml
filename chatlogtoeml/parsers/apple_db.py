@@ -1,12 +1,10 @@
-"""Apple sms.db/chat.db parser
+"""Apple sms.db/chat.db parser.
 
-This module provides a parser for Apple `sms.db` / `chat.db` SQLite databases.
+This module parses Apple `sms.db` / `chat.db` SQLite databases and produces
+`conversation.Conversation` objects consumable by conv_to_eml.mimefromconv.
 
-Currently: it loads messages, handles and chat mappings,
-converts Apple timestamps to timezone-aware datetimes, and produces
-conversation.Conversation objects consumable by conv_to_eml.mimefromconv.
-
-Typedstream (NSAttributedString) parsing is TBD.
+Core requirement: decode message body BLOBs (`attributedBody`, `payload_data`)
+using typedstream and NSKeyedArchiver decoders.
 """
 
 from __future__ import annotations
@@ -15,7 +13,11 @@ import sqlite3
 import datetime
 import logging
 import os
+import plistlib
 from typing import Iterable, Optional, List, Dict, Any
+
+import typedstream  # hard dependency: pytypedstream
+import NSKeyedUnArchiver  # hard dependency: NSKeyedUnArchiver
 
 # FIXME: this is an ugly hack to avoid circular import, should be refactored
 try:
@@ -33,6 +35,22 @@ except Exception:
 # Apple epoch (2001-01-01) -> Unix epoch offset in seconds
 # NOTE: Possible this epoch was not consistently used, esp. in early iChat/iOS versions
 APPLE_EPOCH_OFFSET = 978307200
+STREAMTYPED_START_PATTERN = b"\x01\x2b"
+STREAMTYPED_END_PATTERN = b"\x86\x84"
+
+# Common strings found in archived data that are not likely to be message text
+_IGNORE_TEXT_TOKENS = {
+    "NSString",
+    "NSAttributedString",
+    "NSMutableString",
+    "NSMutableAttributedString",
+    "NSObject",
+    "NSDictionary",
+    "NSMutableDictionary",
+    "NSNumber",
+    "NSValue",
+    "__kIMMessagePartAttributeName",
+}
 
 
 def apple_ts_to_dt(ts: Optional[int]) -> Optional[datetime.datetime]:
@@ -66,6 +84,334 @@ def apple_ts_to_dt(ts: Optional[int]) -> Optional[datetime.datetime]:
         return datetime.datetime.fromtimestamp(unix, tz=datetime.timezone.utc)
     except Exception:
         return None
+
+
+def _as_bytes(value: Any) -> Optional[bytes]:
+    """Convert sqlite BLOB-like values into bytes."""
+    if value is None:
+        return None
+    if isinstance(value, bytes):
+        return value
+    if isinstance(value, bytearray):
+        return bytes(value)
+    if isinstance(value, memoryview):
+        return value.tobytes()
+    return None
+
+
+def _drop_chars(text: str, offset: int) -> Optional[str]:
+    """Drop a character offset from the front of a string."""
+    if text is None:
+        return None
+    if offset <= 0:
+        return text
+    if len(text) <= offset:
+        return None
+    return text[offset:]
+
+
+def _normalize_candidate_text(text: str) -> str:
+    """Normalize extracted candidate text."""
+    if text is None:
+        return ''
+    return text.replace('\x00', '').strip()
+
+
+def _is_candidate_text(text: str) -> bool:
+    """Filter extracted strings to likely user-visible message text."""
+    t = _normalize_candidate_text(text)
+    if not t:
+        return False
+    if t in _IGNORE_TEXT_TOKENS:
+        return False
+    if t.startswith('$'):
+        return False
+    # Require at least one likely human-visible char
+    if not any(ch.isalnum() for ch in t):
+        # allow URLs and attachment/app markers
+        if 'http://' not in t and 'https://' not in t and '\uFFFC' not in t and '\uFFFD' not in t:
+            return False
+    return True
+
+
+def _extract_text_candidates(obj: Any, out: List[str], seen: Optional[set] = None, depth: int = 0) -> None:
+    """Recursively extract string candidates from arbitrary decoded objects."""
+    if seen is None:
+        seen = set()
+    if obj is None or depth > 64:
+        return
+
+    if isinstance(obj, str):
+        if _is_candidate_text(obj):
+            out.append(_normalize_candidate_text(obj))
+        return
+
+    if isinstance(obj, bytes):
+        try:
+            s = obj.decode('utf-8', errors='ignore')
+        except Exception:
+            s = ''
+        if _is_candidate_text(s):
+            out.append(_normalize_candidate_text(s))
+        return
+
+    uid_type = getattr(plistlib, 'UID', None)
+    if uid_type is not None and isinstance(obj, uid_type):
+        return
+
+    if isinstance(obj, (int, float, bool)):
+        return
+
+    obj_id = id(obj)
+    if obj_id in seen:
+        return
+    seen.add(obj_id)
+
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            if isinstance(k, str) and _is_candidate_text(k):
+                out.append(_normalize_candidate_text(k))
+            _extract_text_candidates(v, out, seen, depth + 1)
+        return
+
+    if isinstance(obj, (list, tuple, set)):
+        for item in obj:
+            _extract_text_candidates(item, out, seen, depth + 1)
+        return
+
+    # typedstream objects and other wrappers often expose .value or __dict__
+    try:
+        if hasattr(obj, 'value'):
+            _extract_text_candidates(getattr(obj, 'value'), out, seen, depth + 1)
+    except Exception:
+        pass
+    try:
+        if hasattr(obj, '__dict__'):
+            _extract_text_candidates(vars(obj), out, seen, depth + 1)
+    except Exception:
+        pass
+
+
+def _choose_best_text(candidates: List[str]) -> Optional[str]:
+    """Choose the best user-visible body text from extracted candidates."""
+    if not candidates:
+        return None
+    seen = set()
+    uniq = []
+    for c in candidates:
+        n = _normalize_candidate_text(c)
+        if not n or n in seen:
+            continue
+        if not _is_candidate_text(n):
+            continue
+        seen.add(n)
+        uniq.append(n)
+    if not uniq:
+        return None
+    # Prefer candidates preserving replacement characters used by iMessage for inline objects.
+    with_markers = [s for s in uniq if ('\uFFFC' in s or '\uFFFD' in s)]
+    if with_markers:
+        return max(with_markers, key=len)
+    return max(uniq, key=len)
+
+
+def _decode_streamtyped_legacy(blob: bytes) -> Optional[str]:
+    """Legacy streamtyped parser, mirroring imessage-exporter fallback behavior."""
+    if not blob:
+        return None
+    start = blob.find(STREAMTYPED_START_PATTERN)
+    if start < 0:
+        return None
+    data = blob[start + len(STREAMTYPED_START_PATTERN):]
+    end = data.find(STREAMTYPED_END_PATTERN)
+    if end < 0:
+        return None
+    data = data[:end]
+    if not data:
+        return None
+    try:
+        s = data.decode('utf-8')
+        s = _drop_chars(s, 1)
+    except UnicodeDecodeError:
+        s = data.decode('utf-8', errors='replace')
+        s = _drop_chars(s, 3)
+    if not s:
+        return None
+    s = _normalize_candidate_text(s)
+    return s or None
+
+
+def _resolve_nskeyed_value(item: Any, objects: List[Any], depth: int = 0) -> Any:
+    """Resolve plist UID references in an NSKeyedArchiver object graph."""
+    if depth > 128:
+        return None
+    uid_type = getattr(plistlib, 'UID', None)
+    if uid_type is not None and isinstance(item, uid_type):
+        try:
+            idx = int(getattr(item, 'data'))
+        except Exception:
+            try:
+                idx = int(item)
+            except Exception:
+                return None
+        if 0 <= idx < len(objects):
+            return _resolve_nskeyed_value(objects[idx], objects, depth + 1)
+        return None
+    if isinstance(item, list):
+        return [_resolve_nskeyed_value(v, objects, depth + 1) for v in item]
+    if isinstance(item, dict):
+        out = {}
+        for k, v in item.items():
+            if k == '$class':
+                continue
+            out[k] = _resolve_nskeyed_value(v, objects, depth + 1)
+        return out
+    return item
+
+
+def _decode_nskeyed_plist(blob: bytes) -> Optional[str]:
+    """Decode likely NSKeyedArchiver plist bytes and extract best text."""
+    if not blob:
+        return None
+    try:
+        obj = plistlib.loads(blob)
+    except Exception:
+        return None
+
+    # Generic extraction path first
+    generic = []
+    _extract_text_candidates(obj, generic)
+    generic_best = _choose_best_text(generic)
+
+    # NSKeyedArchiver object table path
+    if isinstance(obj, dict) and '$objects' in obj and '$top' in obj:
+        objects = obj.get('$objects')
+        top = obj.get('$top')
+        if isinstance(objects, list) and isinstance(top, dict):
+            root_item = top.get('root')
+            if root_item is None and len(top) == 1:
+                try:
+                    root_item = next(iter(top.values()))
+                except Exception:
+                    root_item = None
+            if root_item is None and objects:
+                root_item = objects[1] if len(objects) > 1 else objects[0]
+            resolved = _resolve_nskeyed_value(root_item, objects) if root_item is not None else None
+            candidates = []
+            _extract_text_candidates(resolved, candidates)
+            best = _choose_best_text(candidates)
+            if best:
+                return best
+
+    return generic_best
+
+
+def _decode_with_pytypedstream(blob: bytes) -> Optional[str]:
+    """Decode typedstream data using pytypedstream (required dependency)."""
+    if not blob:
+        return None
+    # Typedstream payloads should contain a "streamtyped" header signature.
+    # Avoid invoking decoder on unrelated binary blobs.
+    if b"streamtyped" not in blob:
+        return None
+    try:
+        obj = typedstream.unarchive_from_data(blob)
+    except Exception:
+        return None
+    candidates: List[str] = []
+    _extract_text_candidates(obj, candidates)
+    return _choose_best_text(candidates)
+
+
+def _decode_with_nskeyedunarchiver(blob: bytes) -> Optional[str]:
+    """Decode NSKeyedArchiver plist data using NSKeyedUnArchiver."""
+    if not blob:
+        return None
+    # NSKeyedUnArchiver expects plist data. Guard to avoid expensive/unstable decode attempts.
+    if not (
+        blob.startswith(b"bplist00")
+        or blob.lstrip().startswith(b"<?xml")
+        or blob.lstrip().startswith(b"<plist")
+    ):
+        return None
+    try:
+        obj = NSKeyedUnArchiver.unserializeNSKeyedArchiver(blob)
+    except Exception:
+        return None
+    candidates: List[str] = []
+    _extract_text_candidates(obj, candidates)
+    return _choose_best_text(candidates)
+
+
+def _decode_attributed_body_blob(blob: Any) -> Optional[str]:
+    """Decode message body from attributedBody BLOB (typedstream and plist formats)."""
+    data = _as_bytes(blob)
+    if not data:
+        return None
+
+    # Preferred: typedstream decoder
+    text = _decode_with_pytypedstream(data)
+    if text:
+        return text
+
+    # Rust-like legacy fallback parser for streamtyped payloads
+    text = _decode_streamtyped_legacy(data)
+    if text:
+        return text
+
+    # NSKeyedUnArchiver path for plist-packed payloads
+    text = _decode_with_nskeyedunarchiver(data)
+    if text:
+        return text
+
+    # Some exports may store plist-style payloads in attributedBody
+    text = _decode_nskeyed_plist(data)
+    if text:
+        return text
+
+    # Last-resort UTF-8 decode only for mostly-printable content to avoid
+    # treating random binary garbage as message text.
+    try:
+        raw = data.decode('utf-8', errors='ignore')
+    except Exception:
+        return None
+    if raw:
+        printable = sum(1 for ch in raw if ch.isprintable() or ch in '\r\n\t')
+        ratio = printable / max(1, len(raw))
+    else:
+        ratio = 0.0
+    if ratio >= 0.95 and _is_candidate_text(raw):
+        return _normalize_candidate_text(raw)
+    return None
+
+
+def _decode_payload_blob(blob: Any) -> Optional[str]:
+    """Decode message text-like content from payload_data binary plist BLOB."""
+    data = _as_bytes(blob)
+    if not data:
+        return None
+    text = _decode_with_nskeyedunarchiver(data)
+    if text:
+        return text
+    return _decode_nskeyed_plist(data)
+
+
+def _decode_message_text(text_value: Any, attributed_body_blob: Any, payload_blob: Any) -> str:
+    """Choose best available text from text column, attributedBody and payload_data blobs."""
+    if isinstance(text_value, str) and text_value.strip():
+        return text_value
+
+    attr_text = _decode_attributed_body_blob(attributed_body_blob)
+    if attr_text:
+        return attr_text
+
+    payload_text = _decode_payload_blob(payload_blob)
+    if payload_text:
+        return payload_text
+
+    if isinstance(text_value, str):
+        return text_value
+    return ''
 
 
 def _load_handles(conn: sqlite3.Connection) -> Dict[int, str]:
@@ -195,30 +541,64 @@ def _iter_message_rows(conn: sqlite3.Connection):
     """
     cur = conn.cursor()
 
-    # Try a richer query first (modern schema)
+    # Build a tolerant query based on available message columns.
     try:
-        cur.execute(
-            """
-            SELECT m.ROWID as rowid, m.guid as guid, m.text as text, m.date as date,
-                   m.date_read as date_read, m.date_delivered as date_delivered,
-                   m.is_from_me as is_from_me, m.handle_id as handle_id,
-                   m.destination_caller_id as destination_caller_id,
-                   m.service as service, m.subject as subject,
-                   m.associated_message_guid as associated_message_guid,
-                   c.chat_id as chat_id
-            FROM message m
-            LEFT JOIN chat_message_join c ON m.ROWID = c.message_id
-            ORDER BY m.date;
-            """,
-        )
-    
-    # Fallback to minimal query (older schemas?)
+        cur.execute("PRAGMA table_info(message)")
+        msg_cols = {r[1] for r in cur.fetchall()}
+    except Exception:
+        msg_cols = set()
+
+    select_cols = ["m.ROWID as rowid"]
+    if "guid" in msg_cols:
+        select_cols.append("m.guid as guid")
+    if "text" in msg_cols:
+        select_cols.append("m.text as text")
+    if "date" in msg_cols:
+        select_cols.append("m.date as date")
+    if "attributedBody" in msg_cols:
+        select_cols.append("m.attributedBody as attributedBody")
+    if "payload_data" in msg_cols:
+        select_cols.append("m.payload_data as payload_data")
+    if "date_read" in msg_cols:
+        select_cols.append("m.date_read as date_read")
+    if "date_delivered" in msg_cols:
+        select_cols.append("m.date_delivered as date_delivered")
+    if "is_from_me" in msg_cols:
+        select_cols.append("m.is_from_me as is_from_me")
+    if "handle_id" in msg_cols:
+        select_cols.append("m.handle_id as handle_id")
+    if "destination_caller_id" in msg_cols:
+        select_cols.append("m.destination_caller_id as destination_caller_id")
+    if "service" in msg_cols:
+        select_cols.append("m.service as service")
+    if "subject" in msg_cols:
+        select_cols.append("m.subject as subject")
+    if "associated_message_guid" in msg_cols:
+        select_cols.append("m.associated_message_guid as associated_message_guid")
+
+    # add chat_id if join table exists
+    has_chat_join = False
+    try:
+        cur.execute("SELECT 1 FROM chat_message_join LIMIT 1")
+        has_chat_join = True
     except sqlite3.OperationalError:
-        
+        has_chat_join = False
+
+    sql = f"SELECT {', '.join(select_cols)}"
+    if has_chat_join:
+        sql += ", c.chat_id as chat_id FROM message m LEFT JOIN chat_message_join c ON m.ROWID = c.message_id"
+    else:
+        sql += " FROM message m"
+    if "date" in msg_cols:
+        sql += " ORDER BY m.date"
+
+    try:
+        cur.execute(sql)
+    except sqlite3.OperationalError:
+        # Final fallback for very old schemas
         try:
             cur.execute("SELECT ROWID as rowid, guid, text, date, is_from_me, handle_id FROM message ORDER BY date")
         except sqlite3.OperationalError:
-            # TODO: log this
             return
     for r in cur:
         yield r
@@ -326,7 +706,11 @@ def parse_file(
             raw = {
                 'rowid': rowid,
                 'guid': _row_get(row, 'guid') or '',
-                'text': _row_get(row, 'text') or '',
+                'text': _decode_message_text(
+                    _row_get(row, 'text'),
+                    _row_get(row, 'attributedBody'),
+                    _row_get(row, 'payload_data'),
+                ),
                 'date': date_iso,  # ISO string for imessage_json._parse_date
                 'is_from_me': is_from_me,
                 'service': _row_get(row, 'service') if 'service' in row.keys() else None,
@@ -364,8 +748,11 @@ def parse_file(
             pass
 
 
-# TODO: Typedstream parsing
-# The message body in newer macOS/iOS databases is stored as a "typedstream" (NSAttributedString)
-# or as PLISTs. We should parse these to extract text and attachments. 
-
-__all__ = ["parse_file", "apple_ts_to_dt"]
+__all__ = [
+    "parse_file",
+    "apple_ts_to_dt",
+    "_decode_message_text",
+    "_decode_attributed_body_blob",
+    "_decode_payload_blob",
+    "_decode_streamtyped_legacy",
+]
