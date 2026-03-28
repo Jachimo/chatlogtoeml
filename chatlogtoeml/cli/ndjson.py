@@ -10,13 +10,22 @@ from ..parsers import imessage_json
 
 
 def sanitize_chat_id(chat_id: str, maxlen: int = 64) -> str:
-    safe = ''.join([c if c.isalnum() else '_' for c in chat_id])
-    return safe[:maxlen]
+    # Replace non-alnum with underscores, trim to maxlen, and strip leading underscores
+    safe = ''.join([c if c.isalnum() else '_' for c in (chat_id or '')])
+    safe = safe[:maxlen]
+    return safe.lstrip('_')
 
 
 def make_out_filename(chat_id: str, startdate, idx: int) -> str:
-    datepart = startdate.date().isoformat() if hasattr(startdate, 'date') else 'nodate'
-    return f"{sanitize_chat_id(chat_id)}_{datepart}_{idx:04d}.eml"
+    # Prefer full timestamp first for sortable filenames: YYYY-MM-DDTHHMMSS
+    if hasattr(startdate, 'strftime'):
+        datepart = startdate.strftime('%Y-%m-%dT%H%M%S')
+    elif hasattr(startdate, 'date'):
+        datepart = startdate.date().isoformat()
+    else:
+        datepart = 'nodate'
+    sanitized = sanitize_chat_id(chat_id) or 'chat'
+    return f"{datepart}_{sanitized}_{idx:04d}.eml"
 
 
 def main(argv=None) -> int:

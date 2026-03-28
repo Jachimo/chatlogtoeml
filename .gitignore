@@ -143,3 +143,7 @@ venv.bak/
 
 # Script output logfiles
 converted_*.log
+
+# Local conversion/test outputs
+output/
+samples/output/

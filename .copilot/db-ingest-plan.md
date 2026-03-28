@@ -153,7 +153,7 @@ Status: Prototype implemented in this branch/repository.
     - legacy `streamtyped` marker fallback for unparsed attributedBody payloads
   - Produces message dicts compatible with `imessage_json.build_conversation_from_segment()` and sets `conv.source_db_basename` for pseudo-domain derivation.
 - Added CLI wrapper `bin/db_to_eml` that calls the parser and `conv_to_eml.mimefromconv()`; supports `--embed-attachments`, `--attachment-root`, `--local-handle`, `--no-background`, and `--clobber`.
-- Sample fixture generators added: `tools/generate_macos_chatdb_fixture.py` and `tools/generate_ios_smsdb_fixture.py` (produce DBs and attachments under `samples/` and `testdata/`).
+- Sample fixture generators added: `tools/generate_macos_chatdb_fixture.py`, `tools/generate_ios_smsdb_fixture.py`, and `tools/generate_blob_case_fixtures.py` (produce DBs and attachments under `samples/`).
 - Verification: ran end-to-end conversions; attachment embedding now works (embedded payloads verified by SHA256 match).
 
 Notes / next steps:

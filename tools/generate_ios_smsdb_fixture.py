@@ -12,8 +12,8 @@ import base64
 BASE_EPOCH = 1735689600
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT_DB = ROOT / "testdata" / "ios" / "sms.db"
-ATTACH_ROOT = ROOT / "testdata" / "ios" / "Attachments" / "00"
+OUT_DB = ROOT / "samples" / "ios" / "sms.db"
+ATTACH_ROOT = ROOT / "samples" / "ios" / "Attachments" / "00"
 
 HELLO_TXT = ATTACH_ROOT / "hello.txt"
 PIXEL_PNG = ATTACH_ROOT / "pixel.png"

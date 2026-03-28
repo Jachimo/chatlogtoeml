@@ -47,8 +47,10 @@ heterogeneous blob.
 - `samples/ndjson/` stores the small `sample.ndjson` fixture and the
   `ndjson/realworld/klmyers_ipad/` directory with attachments used by the
   streaming NDJSON importer
-- `samples/databases/ios/` and `samples/databases/macos/` contain the stub
-  SQLite Messages database fixtures plus their attachments
+- `samples/ios/` and `samples/macos/` contain the synthetic SQLite Messages
+  database fixtures plus their attachments
+- `samples/blob_cases/` contains focused BLOB decode matrix fixtures for
+  typedstream and NSKeyedArchiver payload testing
 - `samples/eml/` shows what a rendered `.eml` should look like
 
 The companion `samples/SAMPLEDATA.md` describes the layout, privacy policy,

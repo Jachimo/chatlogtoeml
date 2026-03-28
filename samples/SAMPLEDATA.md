@@ -13,7 +13,7 @@ can quickly find the kind of data you need:
   streaming NDJSON importer.
 - `samples/macos/` contains the synthetic macOS `chat.db` fixture and its
   attachments (created by `tools/generate_macos_chatdb_fixture.py`).
-- `testdata/ios/` contains the synthetic iOS `sms.db` fixture and its
+- `samples/ios/` contains the synthetic iOS `sms.db` fixture and its
   attachments (created by `tools/generate_ios_smsdb_fixture.py`).
 - `eml/` keeps a pre-rendered `.eml` output so you can inspect the formatting
   expected by the converters.
@@ -39,9 +39,9 @@ python3 tools/generate_ios_smsdb_fixture.py
 
 The generator writes:
 
-- `testdata/ios/sms.db`
-- `testdata/ios/Attachments/00/hello.txt`
-- `testdata/ios/Attachments/00/pixel.png`
+- `samples/ios/sms.db`
+- `samples/ios/Attachments/00/hello.txt`
+- `samples/ios/Attachments/00/pixel.png`
 
 Notes:
 - Uses a fixed base timestamp (2025-01-01 00:00:00 UTC) and 60-second increments.
@@ -56,10 +56,10 @@ python3 tools/generate_blob_case_fixtures.py
 
 This writes:
 
-- `testdata/blob_cases/ios/sms_blob_cases.db`
-- `testdata/blob_cases/ios/sms_blob_cases_expected.json`
-- `testdata/blob_cases/macos/chat_blob_cases.db`
-- `testdata/blob_cases/macos/chat_blob_cases_expected.json`
+- `samples/blob_cases/ios/sms_blob_cases.db`
+- `samples/blob_cases/ios/sms_blob_cases_expected.json`
+- `samples/blob_cases/macos/chat_blob_cases.db`
+- `samples/blob_cases/macos/chat_blob_cases_expected.json`
 
 The matrix includes:
 
@@ -101,7 +101,7 @@ mkdir -p samples/output/db_to_eml_macos
 ./bin/db_to_eml samples/macos/chat.db samples/output/db_to_eml_macos --embed-attachments --clobber --debug
 
 mkdir -p samples/output/db_to_eml_ios
-./bin/db_to_eml testdata/ios/sms.db samples/output/db_to_eml_ios --embed-attachments --clobber --debug
+./bin/db_to_eml samples/ios/sms.db samples/output/db_to_eml_ios --embed-attachments --clobber --debug
 ```
 
 Behavior and attachment resolution:

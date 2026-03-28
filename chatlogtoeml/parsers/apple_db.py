@@ -534,6 +534,60 @@ def _get_attachments_for_message(conn: sqlite3.Connection, message_rowid: int) -
     return out
 
 
+def _resolve_attachment_path(raw_path: Optional[str], db_path: str, attachment_root: Optional[str]) -> Optional[str]:
+    """Resolve attachment paths from Apple DBs into local filesystem paths.
+
+    Supports common patterns:
+    - absolute paths
+    - paths rooted at ~/Library/SMS/Attachments/... (remapped to attachment_root)
+    - relative paths (resolved against attachment_root first, then DB directory)
+    """
+    if not raw_path:
+        return None
+    p = str(raw_path).strip()
+    if not p:
+        return None
+
+    candidates: List[str] = []
+    db_dir = os.path.dirname(os.path.abspath(db_path))
+    root_abs = os.path.abspath(attachment_root) if attachment_root else None
+
+    # 1) explicit absolute path
+    if os.path.isabs(p):
+        candidates.append(p)
+
+    # 2) tilde-style Apple paths from backups (do not expand to current HOME; remap to provided root)
+    if p.startswith('~/Library/SMS/Attachments/'):
+        rel = p[len('~/Library/SMS/Attachments/'):].lstrip('/\\')
+        if root_abs:
+            candidates.append(os.path.join(root_abs, rel))
+        # fallback under db_dir in case attachments live alongside db copy
+        candidates.append(os.path.join(db_dir, 'Attachments', rel))
+
+    # 3) relative paths
+    if not os.path.isabs(p) and not p.startswith('~/'):
+        if root_abs:
+            candidates.append(os.path.join(root_abs, p))
+        candidates.append(os.path.join(db_dir, p))
+
+    # 4) as-is fallback
+    candidates.append(p)
+
+    seen = set()
+    for c in candidates:
+        c_norm = os.path.abspath(c)
+        if c_norm in seen:
+            continue
+        seen.add(c_norm)
+        if os.path.isfile(c_norm):
+            return c_norm
+
+    # Return best-effort mapped path even if missing (for diagnostics/header)
+    if candidates:
+        return os.path.abspath(candidates[0])
+    return None
+
+
 def _iter_message_rows(conn: sqlite3.Connection):
     """Yield message rows as sqlite3.Row objects using a tolerant SQL query.
     This tries a modern query that includes a LEFT JOIN on chat_message_join so we can
@@ -722,7 +776,7 @@ def parse_file(
                         'mime_type': a.get('mime_type'),
                         'transfer_name': a.get('transfer_name'),
                         'total_bytes': a.get('total_bytes'),
-                        'path': a.get('path'),
+                        'path': _resolve_attachment_path(a.get('path'), path, attachment_root),
                     }
                     for a in attachments
                 ],

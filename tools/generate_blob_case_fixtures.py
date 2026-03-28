@@ -23,7 +23,7 @@ STREAMTYPED_START_PATTERN = b"\x01\x2b"
 STREAMTYPED_END_PATTERN = b"\x86\x84"
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT_ROOT = ROOT / "testdata" / "blob_cases"
+OUT_ROOT = ROOT / "samples" / "blob_cases"
 IOS_DB = OUT_ROOT / "ios" / "sms_blob_cases.db"
 IOS_EXPECTED = OUT_ROOT / "ios" / "sms_blob_cases_expected.json"
 MAC_DB = OUT_ROOT / "macos" / "chat_blob_cases.db"

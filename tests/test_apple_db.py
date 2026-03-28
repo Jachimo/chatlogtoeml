@@ -81,10 +81,10 @@ class TestAppleDBScaffold(unittest.TestCase):
     def test_blob_case_fixture_decode_matrix(self):
         # Fixture generator writes expected text for each GUID into JSON.
         root = Path(__file__).resolve().parents[1]
-        expected_ios_path = root / "testdata" / "blob_cases" / "ios" / "sms_blob_cases_expected.json"
-        expected_mac_path = root / "testdata" / "blob_cases" / "macos" / "chat_blob_cases_expected.json"
-        ios_db = root / "testdata" / "blob_cases" / "ios" / "sms_blob_cases.db"
-        mac_db = root / "testdata" / "blob_cases" / "macos" / "chat_blob_cases.db"
+        expected_ios_path = root / "samples" / "blob_cases" / "ios" / "sms_blob_cases_expected.json"
+        expected_mac_path = root / "samples" / "blob_cases" / "macos" / "chat_blob_cases_expected.json"
+        ios_db = root / "samples" / "blob_cases" / "ios" / "sms_blob_cases.db"
+        mac_db = root / "samples" / "blob_cases" / "macos" / "chat_blob_cases.db"
 
         # Skip if fixtures not generated yet (tests can still run in minimal environments).
         if not (expected_ios_path.exists() and expected_mac_path.exists() and ios_db.exists() and mac_db.exists()):
