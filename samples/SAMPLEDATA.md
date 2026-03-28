@@ -102,6 +102,12 @@ mkdir -p samples/output/db_to_eml_macos
 
 mkdir -p samples/output/db_to_eml_ios
 ./bin/db_to_eml samples/ios/sms.db samples/output/db_to_eml_ios --embed-attachments --clobber --debug
+
+# Optional contact name enrichment (real-world Address Book DB)
+./bin/db_to_eml samples/ios/real/sms.db samples/output/ios_real_eml \
+  --address-book /mnt/staging/klmyers/AddressBook.sqlitedb \
+  --attachment-root samples/ios/real/Attachments \
+  --embed-attachments --clobber
 ```
 
 Behavior and attachment resolution:
@@ -113,6 +119,10 @@ Behavior and attachment resolution:
 - Use `--embed-attachments` to include binary payloads in the resulting EMLs.
   When embedding is not possible, the converter will add an `X-Original-Attachment-Path`
   header to the EML to record the source path.
+- Use `--address-book` to resolve phone/email handles into real names from
+  `AddressBook.sqlitedb`. This also populates the local owner name (when
+  `ABStore.MeIdentifier` is available), so `From:` shows a human name instead of
+  just `me` or a raw account string.
 
 ## Troubleshooting
 

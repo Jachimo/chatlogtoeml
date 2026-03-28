@@ -15,12 +15,62 @@ from . import conversation
 
 # CSS for styling the HTML part of the message
 import os as _os
-_cssfile = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), 'converted.css')
-try:
-    with open(_cssfile, 'r') as cssfile:
-        css = cssfile.read()
-except Exception:
-    css = ''
+_DEFAULT_CSS = """<style type = text/css>
+.name {
+  font-weight: bold;
+  color: black;
+}
+.localname {
+  font-weight: bold;
+  color: blue;
+}
+.remotename {
+  font-weight: bold;
+  color: red;
+}
+.timestamp {
+  font-size: 10pt;
+  color: grey;
+}
+.reactions {
+  margin-top: 4px;
+  font-size: 0.9em;
+  color: #333;
+}
+.reaction {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 2px 6px;
+  border-radius: 12px;
+  background: #f0f0f0;
+  color: #111;
+  font-size: 0.9em;
+  border: 1px solid #ddd;
+}
+</style>"""
+
+
+def _load_css() -> str:
+    """Load converted.css from common locations with a safe built-in fallback."""
+    here = _os.path.dirname(_os.path.abspath(__file__))
+    candidates = [
+        _os.path.join(here, 'converted.css'),
+        _os.path.join(_os.path.dirname(here), 'converted.css'),
+        _os.path.join(_os.getcwd(), 'converted.css'),
+    ]
+    for path in candidates:
+        try:
+            with open(path, 'r') as cssfile:
+                data = cssfile.read()
+            if data.strip():
+                return data
+        except Exception:
+            continue
+    logging.warning('Unable to load converted.css from expected paths; using built-in default CSS.')
+    return _DEFAULT_CSS
+
+
+css = _load_css()
 
 # Regex for matching CSS to strip when --strip-background argument is used
 bgcssregex = re.compile(r'(?:background(?:-color)?\s*:\s*[^;]+;)', re.I)

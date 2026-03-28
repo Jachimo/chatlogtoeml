@@ -1,13 +1,19 @@
 import unittest
 import plistlib
 import json
+import sqlite3
+import tempfile
 from pathlib import Path
 
 try:
     # Prefer package import
     from chatlogtoeml.parsers import apple_db as apple_db_module
+    from chatlogtoeml.parsers import addressbook as addressbook_module
+    from chatlogtoeml import conv_to_eml
 except Exception:
     import apple_db as apple_db_module
+    import addressbook as addressbook_module
+    import conv_to_eml
 
 
 class TestAppleDBScaffold(unittest.TestCase):
@@ -105,6 +111,113 @@ class TestAppleDBScaffold(unittest.TestCase):
         self.assertEqual(missing, [], f"Missing decoded messages for GUIDs: {missing}")
         for guid, want in expected.items():
             self.assertEqual(got.get(guid, ""), want, f"Mismatch for {guid}")
+
+    def test_addressbook_handle_keys_phone_and_email(self):
+        keys_phone = addressbook_module.handle_keys("+1 (555) 555-0100")
+        self.assertIn("15555550100", keys_phone)
+        self.assertIn("5555550100", keys_phone)
+
+        keys_email = addressbook_module.handle_keys("E:Owner@Example.COM")
+        self.assertEqual(keys_email, {"owner@example.com"})
+
+    def test_parse_file_enriches_owner_and_contact_names(self):
+        with tempfile.TemporaryDirectory() as td:
+            tdp = Path(td)
+            sms_db = tdp / "sms.db"
+            ab_db = tdp / "AddressBook.sqlitedb"
+
+            sms_conn = sqlite3.connect(str(sms_db))
+            sms_cur = sms_conn.cursor()
+            sms_cur.executescript(
+                """
+                CREATE TABLE handle (ROWID INTEGER PRIMARY KEY, id TEXT);
+                CREATE TABLE chat_handle_join (chat_id INTEGER, handle_id INTEGER);
+                CREATE TABLE chat_message_join (chat_id INTEGER, message_id INTEGER);
+                CREATE TABLE message (
+                    ROWID INTEGER PRIMARY KEY,
+                    guid TEXT,
+                    text TEXT,
+                    date INTEGER,
+                    is_from_me INTEGER,
+                    handle_id INTEGER,
+                    service TEXT,
+                    account TEXT
+                );
+                """
+            )
+            sms_cur.execute("INSERT INTO handle(ROWID, id) VALUES(1, '+15555550100')")
+            sms_cur.execute("INSERT INTO chat_handle_join(chat_id, handle_id) VALUES(1, 1)")
+            sms_cur.execute(
+                """
+                INSERT INTO message(ROWID, guid, text, date, is_from_me, handle_id, service, account)
+                VALUES(1, 'm-remote', 'hello from remote', 0, 0, 1, 'iMessage', 'e:owner@example.com')
+                """
+            )
+            sms_cur.execute(
+                """
+                INSERT INTO message(ROWID, guid, text, date, is_from_me, handle_id, service, account)
+                VALUES(2, 'm-local', 'hello from local', 60, 1, 0, 'iMessage', 'e:owner@example.com')
+                """
+            )
+            sms_cur.execute("INSERT INTO chat_message_join(chat_id, message_id) VALUES(1, 1)")
+            sms_cur.execute("INSERT INTO chat_message_join(chat_id, message_id) VALUES(1, 2)")
+            sms_conn.commit()
+            sms_conn.close()
+
+            ab_conn = sqlite3.connect(str(ab_db))
+            ab_cur = ab_conn.cursor()
+            ab_cur.executescript(
+                """
+                CREATE TABLE ABPerson (
+                    ROWID INTEGER PRIMARY KEY,
+                    First TEXT,
+                    Last TEXT,
+                    Middle TEXT,
+                    Organization TEXT,
+                    Nickname TEXT,
+                    DisplayName TEXT,
+                    CompositeNameFallback TEXT
+                );
+                CREATE TABLE ABMultiValue (
+                    record_id INTEGER,
+                    property INTEGER,
+                    value TEXT
+                );
+                CREATE TABLE ABStore (
+                    ROWID INTEGER PRIMARY KEY,
+                    Enabled INTEGER,
+                    MeIdentifier INTEGER
+                );
+                """
+            )
+            ab_cur.execute(
+                """
+                INSERT INTO ABPerson(ROWID, First, Last, DisplayName, CompositeNameFallback)
+                VALUES(1, 'Owner', 'Person', 'Owner Person', 'Owner Person')
+                """
+            )
+            ab_cur.execute(
+                """
+                INSERT INTO ABPerson(ROWID, First, Last, DisplayName, CompositeNameFallback)
+                VALUES(2, 'Remote', 'Friend', 'Remote Friend', 'Remote Friend')
+                """
+            )
+            ab_cur.execute("INSERT INTO ABMultiValue(record_id, property, value) VALUES(1, 4, 'owner@example.com')")
+            ab_cur.execute("INSERT INTO ABMultiValue(record_id, property, value) VALUES(2, 3, '(555) 555-0100')")
+            ab_cur.execute("INSERT INTO ABStore(ROWID, Enabled, MeIdentifier) VALUES(1, 1, 1)")
+            ab_conn.commit()
+            ab_conn.close()
+
+            convs = list(apple_db_module.parse_file(str(sms_db), addressbook_path=str(ab_db), min_messages=1))
+            self.assertEqual(len(convs), 1)
+            conv = convs[0]
+            self.assertEqual(conv.localaccount, "owner@example.com")
+            self.assertEqual(conv.get_realname_from_userid("owner@example.com"), "Owner Person")
+            self.assertEqual(conv.get_realname_from_userid("+15555550100"), "Remote Friend")
+
+            eml = conv_to_eml.mimefromconv(conv, no_background=False)
+            self.assertIn("Owner Person", eml["From"])
+            self.assertIn("Remote Friend", eml.as_string())
 
 
 if __name__ == '__main__':

@@ -25,6 +25,10 @@ try:
 except Exception:
     # When imported as a top-level module fallback
     import imessage_json
+try:
+    from . import addressbook
+except Exception:
+    import addressbook
 
 # Conversation model
 try:
@@ -625,6 +629,8 @@ def _iter_message_rows(conn: sqlite3.Connection):
         select_cols.append("m.destination_caller_id as destination_caller_id")
     if "service" in msg_cols:
         select_cols.append("m.service as service")
+    if "account" in msg_cols:
+        select_cols.append("m.account as account")
     if "subject" in msg_cols:
         select_cols.append("m.subject as subject")
     if "associated_message_guid" in msg_cols:
@@ -678,9 +684,51 @@ def _row_get(row, key, default=None):
         return default
 
 
+def _infer_local_handle(conn: sqlite3.Connection) -> Optional[str]:
+    """Infer local account handle from common Apple DB columns."""
+    cur = conn.cursor()
+    # Prefer message.account because it is usually present per-message.
+    try:
+        cur.execute(
+            """
+            SELECT account, COUNT(*) AS c
+            FROM message
+            WHERE account IS NOT NULL AND TRIM(account) != ''
+            GROUP BY account
+            ORDER BY c DESC
+            LIMIT 1
+            """
+        )
+        row = cur.fetchone()
+        if row and row[0]:
+            return addressbook.normalize_handle(row[0])
+    except Exception:
+        pass
+
+    # Fallback to chat.account_login used by some DB versions.
+    try:
+        cur.execute(
+            """
+            SELECT account_login, COUNT(*) AS c
+            FROM chat
+            WHERE account_login IS NOT NULL AND TRIM(account_login) != ''
+            GROUP BY account_login
+            ORDER BY c DESC
+            LIMIT 1
+            """
+        )
+        row = cur.fetchone()
+        if row and row[0]:
+            return addressbook.normalize_handle(row[0])
+    except Exception:
+        pass
+    return None
+
+
 def parse_file(
         path: str,
         local_handle: Optional[str] = None,
+        addressbook_path: Optional[str] = None,
         idle_hours: float = 4.0,
         min_messages: int = 2,
         max_messages: int = 0,
@@ -702,6 +750,20 @@ def parse_file(
     conn.row_factory = sqlite3.Row
 
     try:
+        ab_data = addressbook.AddressBookData(handle_to_name={}, owner_name=None, owner_handle_keys=set())
+        if addressbook_path:
+            try:
+                ab_data = addressbook.load_address_book(addressbook_path)
+            except Exception as e:
+                logging.warning("Failed to load Address Book DB %s: %s", addressbook_path, e)
+
+        if not local_handle:
+            local_handle = _infer_local_handle(conn)
+
+        local_handle_keys = set()
+        if local_handle:
+            local_handle_keys.update(addressbook.handle_keys(local_handle))
+
         handle_map = _load_handles(conn)
         chat_participants = _load_chat_participants(conn)
 
@@ -735,6 +797,13 @@ def parse_file(
                 else:
                     dest = _row_get(row, 'destination_caller_id')
                     sender = dest or 'UNKNOWN'
+
+            # If local_handle was not supplied, infer it from account/account_login when available.
+            if not local_handle:
+                account_value = _row_get(row, 'account')
+                if isinstance(account_value, str) and account_value.strip():
+                    local_handle = addressbook.normalize_handle(account_value)
+                    local_handle_keys.update(addressbook.handle_keys(local_handle))
 
             # determine chat identifier
             chat_id = None
@@ -789,6 +858,29 @@ def parse_file(
         for chat_id, msgs in messages_by_chat.items():
             for segment in imessage_json.segment_messages(msgs, idle_hours=idle_hours, min_messages=min_messages, max_messages=max_messages, max_days=max_days):
                 conv = imessage_json.build_conversation_from_segment(segment, chat_id, path, local_handle, embed_attachments=embed_attachments)
+
+                # Enrich participant real names from Address Book
+                if ab_data.handle_to_name:
+                    for participant in conv.participants:
+                        resolved = addressbook.resolve_name_for_handle(participant.userid, ab_data.handle_to_name)
+                        if resolved:
+                            participant.realname = resolved
+
+                # Enrich local participant with owner name if available
+                if ab_data.owner_name:
+                    if conv.localaccount:
+                        for participant in conv.participants:
+                            if participant.userid and conv.localaccount and participant.userid.lower() == conv.localaccount.lower():
+                                participant.realname = ab_data.owner_name
+                                break
+                    else:
+                        for participant in conv.participants:
+                            keys = addressbook.handle_keys(participant.userid)
+                            if keys and ((keys & ab_data.owner_handle_keys) or (local_handle_keys and (keys & local_handle_keys))):
+                                participant.realname = ab_data.owner_name
+                                conv.set_local_account(participant.userid)
+                                break
+
                 # record source DB basename for fakedomain logic
                 try:
                     conv.source_db_basename = os.path.basename(path)

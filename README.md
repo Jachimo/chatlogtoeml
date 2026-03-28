@@ -7,10 +7,12 @@ Conversion tool to migrate various instant messaging, SMS, and iMessage log expo
 ### `db_to_eml` (Apple sms.db / chat.db)
 
 ```
-./bin/db_to_eml path/to/chat.db [outdir] [--local-handle <handle>] [--attachment-root <dir>] [--embed-attachments] [--idle-hours N] [--min-messages N] [--max-messages N] [--max-days N] [--no-background] [--clobber] [--debug]
+./bin/db_to_eml path/to/chat.db [outdir] [--local-handle <handle>] [--address-book <AddressBook.sqlitedb>] [--attachment-root <dir>] [--embed-attachments] [--idle-hours N] [--min-messages N] [--max-messages N] [--max-days N] [--no-background] [--clobber] [--debug]
 ```
 
 Parses Apple Messages SQLite databases (macOS `chat.db` or iOS `sms.db`), resolves attachment metadata and optional payloads, segments conversations by idle gaps/size/duration, and writes per-segment `.eml` files. Use `--attachment-root` to point to a directory containing attachment files when they are not located relative to the DB. Use `--embed-attachments` to include binary payloads in the resulting EML; when embedding is not possible the original path will be recorded (`X-Original-Attachment-Path`).
+
+When available, pass `--address-book /path/to/AddressBook.sqlitedb` to translate handles into real contact names. The parser uses `ABPerson` + `ABMultiValue` for contact lookups and `ABStore.MeIdentifier` to identify the DB owner ("me"), so local messages can render with the owner’s real name in `From:` instead of a generic handle.
 
 ### `chat_convert` (Adium and XML/HTML logs)
 

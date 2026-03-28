@@ -72,5 +72,30 @@ class TestConvToEmlEdgeCases(unittest.TestCase):
         self.assertIn('reaction', html)
         self.assertIn('👍', html)
 
+    def test_html_includes_stylesheet_classes(self):
+        conv = conversation.Conversation()
+        conv.add_participant('me')
+        conv.add_participant('other')
+        conv.set_local_account('me')
+        m = conversation.Message('message')
+        m.msgfrom = 'other'
+        m.text = 'styled hello'
+        m.date = datetime.datetime(2021, 1, 1, 0, 0, 0, tzinfo=datetime.timezone.utc)
+        conv.add_message(m)
+
+        eml = conv_to_eml.mimefromconv(conv)
+        alt = eml.get_payload()[0]
+        html_part = alt.get_payload()[1]
+        payload_bytes = html_part.get_payload(decode=True)
+        if isinstance(payload_bytes, bytes):
+            html = payload_bytes.decode('utf-8', errors='ignore')
+        else:
+            html = str(payload_bytes)
+
+        self.assertIn('<style', html.lower())
+        self.assertIn('.localname', html)
+        self.assertIn('.remotename', html)
+        self.assertIn('.timestamp', html)
+
 if __name__ == '__main__':
     unittest.main()
