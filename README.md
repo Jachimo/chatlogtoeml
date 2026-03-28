@@ -4,6 +4,14 @@ Conversion tool to migrate various instant messaging, SMS, and iMessage log expo
 
 ## Usage
 
+### `db_to_eml` (Apple sms.db / chat.db)
+
+```
+./bin/db_to_eml path/to/chat.db [outdir] [--local-handle <handle>] [--attachment-root <dir>] [--embed-attachments] [--idle-hours N] [--min-messages N] [--max-messages N] [--max-days N] [--no-background] [--clobber] [--debug]
+```
+
+Parses Apple Messages SQLite databases (macOS `chat.db` or iOS `sms.db`), resolves attachment metadata and optional payloads, segments conversations by idle gaps/size/duration, and writes per-segment `.eml` files. Use `--attachment-root` to point to a directory containing attachment files when they are not located relative to the DB. Use `--embed-attachments` to include binary payloads in the resulting EML; when embedding is not possible the original path will be recorded (`X-Original-Attachment-Path`).
+
 ### `chat_convert` (Adium and XML/HTML logs)
 
 ```

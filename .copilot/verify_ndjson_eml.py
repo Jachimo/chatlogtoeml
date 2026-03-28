@@ -25,7 +25,7 @@ from chatlogtoeml import conv_to_eml, conversation
 from chatlogtoeml.parsers import imessage_json
 import datetime
 
-NDJSON_DIR = 'samples/ndjson'
+NDJSON_DIR = 'samples/ndjson/synthetic'
 OUT_BASE = 'samples/ndjson/verify_out'
 LOCAL_HANDLE = 'mrogers@pbs.invalid'
 

@@ -1,0 +1,3 @@
+{"chat_identifier":"c_synth","guid":"s1","text":"Hello world","date":"2021-01-01T00:00:00Z","is_from_me":false,"sender":"alice"}
+{"chat_identifier":"c_synth","guid":"s2","text":"Hi Alice","date":"2021-01-01T00:01:00Z","is_from_me":true,"sender":"bob"}
+{"chat_identifier":"c_synth","guid":"s3","text":"Another chat","date":"2021-02-01T00:00:00Z","is_from_me":false,"sender":"carol"}

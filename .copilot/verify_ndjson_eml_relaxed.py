@@ -14,7 +14,7 @@ if _REPO_ROOT not in sys.path:
 
 from chatlogtoeml.parsers import imessage_json
 
-NDJSON_DIR = 'samples/ndjson'
+NDJSON_DIR = 'samples/ndjson/synthetic'
 OUT_BASE = 'samples/ndjson/verify_out'
 LOCAL_HANDLE = 'mrogers@pbs.invalid'
 

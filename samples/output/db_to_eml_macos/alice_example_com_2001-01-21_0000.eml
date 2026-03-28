@@ -1,0 +1,45 @@
+Content-Type: multipart/related; boundary="===============5760424932206989548=="
+MIME-Version: 1.0
+From: "alice@example.com" <alice@example.com>
+To: "alice@example.com" <alice@example.com>
+Date: Sun, 21 Jan 2001 02:08:09 +0000
+Subject: iMessage with alice@example.com on Sun, Jan 21 2001
+References: <c160f8cc69a4f0bf2b0362752353d060@chat.imessage.invalid>
+Message-ID: <7487a549fe99068d4e20a1e88d83640a@chat.imessage.invalid>
+X-Converted-On: Fri, 27 Mar 2026 20:19:07 
+X-Original-File: samples/macos/chat.db
+X-Chat-Identifier: alice@example.com
+X-Segment-Start: 2001-01-21T02:08:09.600000+00:00
+X-Segment-Messages: 2
+X-iMessage-Service: iMessage
+X-Converted-By: db_to_eml
+
+--===============5760424932206989548==
+Content-Type: multipart/alternative; boundary="===============5711183982025279291=="
+MIME-Version: 1.0
+
+--===============5711183982025279291==
+Content-Type: text/text; charset="us-ascii"
+MIME-Version: 1.0
+Content-Transfer-Encoding: 7bit
+
+(02:08:09 AM) alice@example.com: 
+(02:08:09 AM) alice@example.com: Replying to Bob
+--===============5711183982025279291==
+Content-Type: text/html; charset="us-ascii"
+MIME-Version: 1.0
+Content-Transfer-Encoding: 7bit
+
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+
+</head>
+<body>
+<p class="message"><span class="timestamp">(02:08:09 AM)&nbsp;</span><span class="remotename">alice@example.com:&ensp;</span></p>
+<p class="message"><span class="timestamp">(02:08:09 AM)&nbsp;</span><span class="remotename">alice@example.com:&ensp;</span><span class="message_text">Replying to Bob</span></p>
+</body>
+</html>
+--===============5711183982025279291==--
+
+--===============5760424932206989548==--

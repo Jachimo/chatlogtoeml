@@ -1,0 +1,56 @@
+Content-Type: multipart/related; boundary="===============0752329267079362758=="
+MIME-Version: 1.0
+From: "alice@example.com" <alice@example.com>
+To: "alice@example.com" <alice@example.com>
+Date: Sun, 21 Jan 2001 02:08:09 +0000
+Subject: iMessage with alice@example.com on Sun, Jan 21 2001
+References: <c160f8cc69a4f0bf2b0362752353d060@sms.imessage.invalid>
+Message-ID: <cec2554ba99ff079bdb755f7ab18663e@sms.imessage.invalid>
+X-Converted-On: Fri, 27 Mar 2026 20:19:07 
+X-Original-File: testdata/ios/sms.db
+X-Chat-Identifier: alice@example.com
+X-Segment-Start: 2001-01-21T02:08:09.720000+00:00
+X-Segment-Messages: 2
+X-iMessage-Service: iMessage
+X-Converted-By: db_to_eml
+
+--===============0752329267079362758==
+Content-Type: text/plain
+MIME-Version: 1.0
+Content-Transfer-Encoding: base64
+Content-Disposition: attachment; filename="testdata/ios/Attachments/00/hello.txt"
+Content-ID: <8e61849ee13f42a00972c01ed39e2cb5>
+Content-Type: text/plain; name="testdata/ios/Attachments/00/hello.txt"
+
+aGVsbG8gd29ybGQK
+
+--===============0752329267079362758==
+Content-Type: multipart/alternative; boundary="===============0780680629784870109=="
+MIME-Version: 1.0
+
+--===============0780680629784870109==
+Content-Type: text/text; charset="us-ascii"
+MIME-Version: 1.0
+Content-Transfer-Encoding: 7bit
+
+(02:08:09 AM) alice@example.com: Can you review this file?
+(02:08:10 AM) alice@example.com: Replying to you, Bob.
+--===============0780680629784870109==
+Content-Type: text/html; charset="us-ascii"
+MIME-Version: 1.0
+Content-Transfer-Encoding: 7bit
+
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+
+</head>
+<body>
+<p class="message"><span class="timestamp">(02:08:09 AM)&nbsp;</span><span class="remotename">alice@example.com:&ensp;</span><span class="message_text">Can you review this file?</span>
+<br><span class="attachment">Attachment:&nbsp;<a href="cid:8e61849ee13f42a00972c01ed39e2cb5">testdata/ios/Attachments/00/hello.txt</a></span></p>
+<p class="message"><span class="timestamp">(02:08:10 AM)&nbsp;</span><span class="remotename">alice@example.com:&ensp;</span><span class="message_text">Replying to you, Bob.</span></p>
+</body>
+</html>
+--===============0780680629784870109==--
+
+--===============0752329267079362758==--

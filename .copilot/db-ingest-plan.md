@@ -140,4 +140,21 @@ def apple_ts_to_dt(v):
 - Unit and integration tests pass and verifier checks show parity with NDJSON-generated EMLs for the same content.
 
 
+## Implementation status
+
+Status: Prototype implemented in this branch/repository.
+
+- Implemented `chatlogtoeml/parsers/apple_db.py` (SQLite parser). Key features:
+  - Robust `apple_ts_to_dt()` with magnitude heuristics for seconds/millis/micros/nanos.
+  - Tolerant `_get_attachments_for_message()` that inspects `PRAGMA table_info(attachment)` and builds a best-effort SELECT; falls back to a minimal query when schema differs.
+  - Produces message dicts compatible with `imessage_json.build_conversation_from_segment()` and sets `conv.source_db_basename` for pseudo-domain derivation.
+- Added CLI wrapper `bin/db_to_eml` that calls the parser and `conv_to_eml.mimefromconv()`; supports `--embed-attachments`, `--attachment-root`, `--local-handle`, `--no-background`, and `--clobber`.
+- Sample fixture generators added: `tools/generate_macos_chatdb_fixture.py` and `tools/generate_ios_smsdb_fixture.py` (produce DBs and attachments under `samples/` and `testdata/`).
+- Verification: ran end-to-end conversions; attachment embedding now works (embedded payloads verified by SHA256 match).
+
+Notes / next steps:
+- Typedstream (NSAttributedString) parsing for `attributedBody` remains TODO.
+- Consider improving `--attachment-root` heuristics to remap absolute user home paths to sanitized fixture locations.
+- Add unit tests for `_get_attachments_for_message()` and larger integration tests for DB ingestion.
+
 *Plan saved to `.copilot/db-ingest-plan.md` in the repository.*
