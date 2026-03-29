@@ -103,14 +103,14 @@ class TestConvToEmlEdgeCases(unittest.TestCase):
         conv.service = 'iMessage'
         conv.filenameuserid = '12'
         conv.source_db_basename = 'sms.db'
-        conv.add_participant('me@example.com')
+        conv.add_participant('local.user@example.test')
         conv.add_participant('+15555550100')
-        conv.set_local_account('me@example.com')
-        conv.add_realname_to_userid('me@example.com', 'Katie Myers')
+        conv.set_local_account('local.user@example.test')
+        conv.add_realname_to_userid('local.user@example.test', 'Local User')
         conv.add_realname_to_userid('+15555550100', 'Remote Friend')
 
         m = conversation.Message('message')
-        m.msgfrom = 'me@example.com'
+        m.msgfrom = 'local.user@example.test'
         m.text = 'hello'
         m.date = datetime.datetime(2013, 2, 12, 6, 6, 54, tzinfo=datetime.timezone.utc)
         conv.add_message(m)
@@ -125,19 +125,19 @@ class TestConvToEmlEdgeCases(unittest.TestCase):
         conv.service = 'iMessage'
         conv.filenameuserid = '12'
         conv.source_db_basename = 'sms.db'
-        conv.add_participant('me@example.com')
-        conv.set_local_account('me@example.com')
-        conv.add_realname_to_userid('me@example.com', 'Katie Myers')
+        conv.add_participant('local.user@example.test')
+        conv.set_local_account('local.user@example.test')
+        conv.add_realname_to_userid('local.user@example.test', 'Local User')
 
         m = conversation.Message('message')
-        m.msgfrom = 'me@example.com'
+        m.msgfrom = 'local.user@example.test'
         m.text = 'self note'
         m.date = datetime.datetime(2013, 2, 12, 6, 6, 54, tzinfo=datetime.timezone.utc)
         conv.add_message(m)
         conv.startdate = m.date
 
         eml = conv_to_eml.mimefromconv(conv)
-        self.assertEqual(eml['Subject'], 'iMessage with Katie Myers #12 on Tue, Feb 12 2013')
+        self.assertEqual(eml['Subject'], 'iMessage with Local User #12 on Tue, Feb 12 2013')
 
     def test_headers_are_ascii_sanitized(self):
         conv = conversation.Conversation()
@@ -145,14 +145,14 @@ class TestConvToEmlEdgeCases(unittest.TestCase):
         conv.service = 'iMessage'
         conv.filenameuserid = '2'
         conv.source_db_basename = 'sms.db'
-        conv.add_participant('klmyers1189@gmail.com')
-        conv.add_participant('+15133101326')
-        conv.set_local_account('klmyers1189@gmail.com')
-        conv.add_realname_to_userid('klmyers1189@gmail.com', 'Katie Myers')
-        conv.add_realname_to_userid('+15133101326', 'Emily Bruestle 💩')
+        conv.add_participant('local.user@example.test')
+        conv.add_participant('+15555550123')
+        conv.set_local_account('local.user@example.test')
+        conv.add_realname_to_userid('local.user@example.test', 'Local User')
+        conv.add_realname_to_userid('+15555550123', 'Remote User 💩')
 
         m = conversation.Message('message')
-        m.msgfrom = '+15133101326'
+        m.msgfrom = '+15555550123'
         m.text = 'hello'
         m.date = datetime.datetime(2013, 2, 1, 1, 50, 56, tzinfo=datetime.timezone.utc)
         conv.add_message(m)
@@ -160,8 +160,8 @@ class TestConvToEmlEdgeCases(unittest.TestCase):
 
         eml = conv_to_eml.mimefromconv(conv)
         raw = eml.as_string()
-        self.assertIn('Subject: iMessage with Emily Bruestle #2 on Fri, Feb  1 2013', raw)
-        self.assertIn('To: Emily Bruestle <+15133101326@sms.imessage.invalid>', raw)
+        self.assertIn('Subject: iMessage with Remote User #2 on Fri, Feb  1 2013', raw)
+        self.assertIn('To: Remote User <15555550123@sms.imessage.invalid>', raw)
         self.assertNotIn('=?utf-8?', raw.lower())
 
     def test_subject_fallback_uses_sanitized_to_handle(self):
@@ -170,20 +170,45 @@ class TestConvToEmlEdgeCases(unittest.TestCase):
         conv.service = 'iMessage'
         conv.filenameuserid = '24'
         conv.source_db_basename = 'sms.db'
-        conv.add_participant('klmyers1189@gmail.com')
-        conv.add_participant('+19192657704')
-        conv.set_local_account('klmyers1189@gmail.com')
-        conv.add_realname_to_userid('klmyers1189@gmail.com', 'Katie Myers')
+        conv.add_participant('local.user@example.test')
+        conv.add_participant('+15555550999')
+        conv.set_local_account('local.user@example.test')
+        conv.add_realname_to_userid('local.user@example.test', 'Local User')
 
         m = conversation.Message('message')
-        m.msgfrom = '+19192657704'
+        m.msgfrom = '+15555550999'
         m.text = 'ping'
         m.date = datetime.datetime(2013, 4, 3, 3, 7, 44, tzinfo=datetime.timezone.utc)
         conv.add_message(m)
         conv.startdate = m.date
 
         eml = conv_to_eml.mimefromconv(conv)
-        self.assertEqual(eml['Subject'], 'iMessage with 19192657704 #24 on Wed, Apr  3 2013')
+        self.assertEqual(eml['Subject'], 'iMessage with 15555550999 #24 on Wed, Apr  3 2013')
+
+    def test_tel_handle_to_header_uses_rfc_safe_pseudo_address(self):
+        conv = conversation.Conversation()
+        conv.imclient = 'iMessage'
+        conv.service = 'iMessage'
+        conv.filenameuserid = 'tel:+15555550977'
+        conv.source_db_basename = 'sms.db'
+        conv.add_participant('local.user@example.test')
+        conv.add_participant('tel:+15555550977')
+        conv.set_local_account('local.user@example.test')
+        conv.add_realname_to_userid('local.user@example.test', 'Local User')
+        conv.add_realname_to_userid('tel:+15555550977', 'Remote Contact')
+
+        m = conversation.Message('message')
+        m.msgfrom = 'tel:+15555550977'
+        m.text = 'hi'
+        m.date = datetime.datetime(2015, 1, 24, 17, 25, 8, tzinfo=datetime.timezone.utc)
+        conv.add_message(m)
+        conv.startdate = m.date
+
+        eml = conv_to_eml.mimefromconv(conv)
+        raw = eml.as_string()
+        self.assertIn('To: Remote Contact <15555550977@sms.imessage.invalid>', raw)
+        self.assertNotIn('<tel>', raw)
+        self.assertNotIn('tel:+15555550977@sms.imessage.invalid', raw)
 
 if __name__ == '__main__':
     unittest.main()

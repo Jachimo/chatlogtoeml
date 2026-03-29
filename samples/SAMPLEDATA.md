@@ -1,22 +1,16 @@
 # SAMPLE DATA
 
-This directory contains the fixtures and sample inputs that power the
-`chatlogtoeml` converters. The structure is organized by ingestion format so you
-can quickly find the kind of data you need:
+This directory contains the fixtures and sample inputs for testing the
+`chatlogtoeml` converters. The directory structure is organized by ingestion format:
 
-- `adiumxml/` keeps XML-based Adium logs (the `.chatlog` bundle exported from
-  Adium or its raw XML equivalents).
-- `adiumhtml/` stores an example Adium HTML log for regression testing the old
-  HTML parser.
-- `ndjson/` holds the small `sample.ndjson` fixture plus the
-  `ndjson/realworld/klmyers_ipad/` directory with attachments used by the
-  streaming NDJSON importer.
-- `samples/macos/` contains the synthetic macOS `chat.db` fixture and its
-  attachments (created by `tools/generate_macos_chatdb_fixture.py`).
-- `samples/ios/` contains the synthetic iOS `sms.db` fixture and its
-  attachments (created by `tools/generate_ios_smsdb_fixture.py`).
-- `eml/` keeps a pre-rendered `.eml` output so you can inspect the formatting
-  expected by the converters.
+- `adiumxml/` - Adium XML-based Adium logs (`.chatlog` or `.xml` files).
+- `adiumhtml/` - Adium HTML logs (old style)
+- `ndjson/` - "Newline Delimited JSON" (`sample.ndjson`) 
+- `macos/` - macOS iMessage `chat.db` and its
+  attachments directory (created by `tools/generate_macos_chatdb_fixture.py`)
+- `ios/` - iOS iMessage `sms.db` fixture and its
+  attachments (created by `tools/generate_ios_smsdb_fixture.py`)
+- `eml/` - pre-rendered output `.eml` output (for designing downstream converters, etc.)
 
 See `APPLE_DB_NOTES.md` and `.copilot/db-ingest-plan.md` for additional
 implementation notes about the database fixtures and parser.
@@ -104,9 +98,9 @@ mkdir -p samples/output/db_to_eml_ios
 ./bin/db_to_eml samples/ios/sms.db samples/output/db_to_eml_ios --embed-attachments --clobber --debug
 
 # Optional contact name enrichment (real-world Address Book DB)
-./bin/db_to_eml samples/ios/real/sms.db samples/output/ios_real_eml \
-  --address-book /mnt/staging/klmyers/AddressBook.sqlitedb \
-  --attachment-root samples/ios/real/Attachments \
+./bin/db_to_eml /path/to/real/sms.db /tmp/ios_real_eml \
+  --address-book /path/to/AddressBook.sqlitedb \
+  --attachment-root /path/to/real/Attachments \
   --embed-attachments --clobber
 ```
 
@@ -136,9 +130,3 @@ Behavior and attachment resolution:
 
 - `ndjson/sample.ndjson` and `ndjson/realworld/` contain NDJSON exports used
   by `bin/json_to_eml`. Use `./bin/json_to_eml <ndjson> <outdir> [--embed-attachments]` to test NDJSON conversions.
-
----
-
-If you need additional sanitized fixtures or want to expand test coverage for
-edge cases (reactions, replies, various timestamp encodings), add generator
-scripts under `tools/` and document them here.

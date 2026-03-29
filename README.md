@@ -1,10 +1,12 @@
 # chatlogtoeml
 
-Conversion tool to migrate various instant messaging, SMS, and iMessage log exports into RFC822 `.eml` files for archiving. Shared logic lives in the `chatlogtoeml` package, with thin CLI wrappers under `bin/`.
+Conversion tool to migrate various instant messaging, SMS, and iMessage log exports into RFC822 `.eml` files for archiving. 
+
+Shared logic lives in the `chatlogtoeml` package, with thin CLI wrappers under `bin/`.
 
 ## Usage
 
-### `db_to_eml` (Apple sms.db / chat.db)
+### `db_to_eml` (Apple iMessage sms.db / chat.db)
 
 ```
 ./bin/db_to_eml path/to/chat.db [outdir] [--local-handle <handle>] [--address-book <AddressBook.sqlitedb>] [--attachment-root <dir>] [--embed-attachments] [--idle-hours N] [--min-messages N] [--max-messages N] [--max-days N] [--no-background] [--clobber] [--debug]
@@ -12,15 +14,15 @@ Conversion tool to migrate various instant messaging, SMS, and iMessage log expo
 
 Parses Apple Messages SQLite databases (macOS `chat.db` or iOS `sms.db`), resolves attachment metadata and optional payloads, segments conversations by idle gaps/size/duration, and writes per-segment `.eml` files. Use `--attachment-root` to point to a directory containing attachment files when they are not located relative to the DB. Use `--embed-attachments` to include binary payloads in the resulting EML; when embedding is not possible the original path will be recorded (`X-Original-Attachment-Path`).
 
-When available, pass `--address-book /path/to/AddressBook.sqlitedb` to translate handles into real contact names. The parser uses `ABPerson` + `ABMultiValue` for contact lookups and `ABStore.MeIdentifier` to identify the DB owner ("me"), so local messages can render with the owner’s real name in `From:` instead of a generic handle.
+Optionally, pass `--address-book /path/to/AddressBook.sqlitedb` to translate handles into real contact names. The parser uses `ABPerson` + `ABMultiValue` for contact lookups and `ABStore.MeIdentifier` to identify the DB owner ("me"), so local messages can render with the owner’s real name in `From:` instead of a generic handle.
 
-### `chat_convert` (Adium and XML/HTML logs)
+### `chat_convert` (Adium XML/HTML logs)
 
 ```
 ./bin/chat_convert path/to/log.chatlog [outputdir] [--clobber] [--attach] [--no-background] [--debug]
 ```
 
-Detects `.chatlog` bundles, `.xml`, `.AdiumHTMLLog`, or `.html`, runs the appropriate parser, and writes a `.eml` file with deterministic `Message-ID`/`References` headers. Use `--attach` to embed the original log, `--clobber` to overwrite, and `--no-background` to strip background styling. The helper script `./adium_convert.sh` now calls `bin/chat_convert` when processing directories.
+Detects `.chatlog` bundles, `.xml`, `.AdiumHTMLLog`, or `.html`, runs the appropriate parser, and writes a `.eml` file with deterministic `Message-ID`/`References` headers. Use `--attach` to embed the original log, `--clobber` to overwrite, and `--no-background` to strip background styling. The helper script `./adium_convert.sh` calls `bin/chat_convert` when processing directories.
 
 ### `json_to_eml` (imessage-exporter NDJSON)
 
@@ -47,7 +49,7 @@ heterogeneous blob.
 - `samples/adiumxml/` holds XML/.chatlog exports from Adium
 - `samples/adiumhtml/` keeps the legacy Adium HTML log snapshot
 - `samples/ndjson/` stores the small `sample.ndjson` fixture and the
-  `ndjson/realworld/klmyers_ipad/` directory with attachments used by the
+  `ndjson/` directory with attachments used by the
   streaming NDJSON importer
 - `samples/ios/` and `samples/macos/` contain the synthetic SQLite Messages
   database fixtures plus their attachments
@@ -76,7 +78,7 @@ Adium logs from the Facebook XMPP era are sometimes malformed, contain only one 
 
 ### Malformed Adium XML Logs
 
-Some logs contain missing closing tags. Use `extras/fix_xml_close.sh` (which operates on the `failed_YYYY-MM-DD.log` files emitted by the bulk converter) to patch `</chat>` tags before rerunning.
+Some logs contain missing closing tags. Use `extras/adium/fix_xml_close.sh` (which operates on the `failed_YYYY-MM-DD.log` files emitted by the bulk converter) to patch `</chat>` tags before rerunning.
 
 #### Illegal XML Characters
 
@@ -92,6 +94,7 @@ Logs without any human-generated content are skipped; they could be processed in
 
 ## References
 
-- `extras/format-html` contains original Adium transformation helpers.
+- `extras/adium/format-html` contains original Adium transformation helpers.
+- `extras/adium/emlToMbox.py` merges a directory of `.eml` files into a single `.mbox` for import into Apple Mail or other MUAs.
 - Bulk conversion helper: `./adium_convert.sh`.
-- Use `./bin/chat_convert` or `./bin/json_to_eml` from the repository root so `converted.css` is found relative to the package.
+- Run all `bin/` scripts from the repository root so `converted.css` is found relative to the package.

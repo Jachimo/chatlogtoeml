@@ -160,12 +160,30 @@ def _subject_name_from_handle(value: str) -> str:
     return text.strip()
 
 
+def _pseudo_localpart_from_handle(value: str) -> str:
+    """Build an RFC-safe local-part from a non-email handle."""
+    text = _ascii_header_text(value)
+    if not text:
+        return 'unknown'
+    lower = text.lower()
+    for prefix in ('tel:', 'sms:', 'mailto:', 'im:'):
+        if lower.startswith(prefix):
+            text = text[len(prefix):]
+            lower = text.lower()
+            break
+    # keep ASCII alnum plus a minimal safe subset for local-part readability
+    text = re.sub(r'[^A-Za-z0-9._-]+', '', text)
+    if not text:
+        return 'unknown'
+    return text
+
+
 def _format_header_address(userid: str, realname: str, fakedomain: str) -> str:
     uid = _ascii_header_text(userid)
     if '@' in uid:
         addr = uid
     else:
-        addr = uid + '@' + fakedomain
+        addr = _pseudo_localpart_from_handle(uid) + '@' + fakedomain
     disp = _ascii_display_name(realname)
     if disp:
         return formataddr((disp, addr))

@@ -39,6 +39,8 @@ except Exception:
 # Apple epoch (2001-01-01) -> Unix epoch offset in seconds
 # NOTE: Possible this epoch was not consistently used, esp. in early iChat/iOS versions
 APPLE_EPOCH_OFFSET = 978307200
+
+# Streamtyped BLOB markers (magic numbers)
 STREAMTYPED_START_PATTERN = b"\x01\x2b"
 STREAMTYPED_END_PATTERN = b"\x86\x84"
 
@@ -541,7 +543,7 @@ def _get_attachments_for_message(conn: sqlite3.Connection, message_rowid: int) -
 def _resolve_attachment_path(raw_path: Optional[str], db_path: str, attachment_root: Optional[str]) -> Optional[str]:
     """Resolve attachment paths from Apple DBs into local filesystem paths.
 
-    Supports common patterns:
+    Supports multiple cases:
     - absolute paths
     - paths rooted at ~/Library/SMS/Attachments/... (remapped to attachment_root)
     - relative paths (resolved against attachment_root first, then DB directory)
@@ -599,7 +601,7 @@ def _iter_message_rows(conn: sqlite3.Connection):
     """
     cur = conn.cursor()
 
-    # Build a tolerant query based on available message columns.
+    # Build a "tolerant" query based on available message columns.
     try:
         cur.execute("PRAGMA table_info(message)")
         msg_cols = {r[1] for r in cur.fetchall()}
