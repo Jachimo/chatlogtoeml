@@ -6,9 +6,10 @@ from email.mime.base import MIMEBase
 import hashlib
 import datetime
 import email.encoders
-from email.utils import format_datetime
+from email.utils import format_datetime, formataddr
 import re
 import logging
+import unicodedata
 
 from . import conversation
 
@@ -102,6 +103,75 @@ def _determine_fakedomain(conv: conversation.Conversation) -> str:
     return f'{svc}.{cl}.invalid'
 
 
+def _is_imessage_conversation(conv: conversation.Conversation) -> bool:
+    service = (conv.service or '').lower()
+    if service == 'imessage':
+        return True
+    try:
+        basename = (getattr(conv, 'source_db_basename', '') or '').lower()
+    except Exception:
+        basename = ''
+    if basename.startswith('sms') or basename.startswith('chat'):
+        return True
+    return False
+
+
+def _subject_participant_name(conv: conversation.Conversation, local_participant: conversation.Participant) -> str:
+    """Pick a human-friendly participant name for Subject."""
+    others = [p for p in conv.participants if p.userid != local_participant.userid]
+    chosen = others[0] if others else local_participant
+    if chosen.realname:
+        return chosen.realname
+    if chosen.userid:
+        return chosen.userid
+    return ''
+
+
+def _ascii_header_text(value: str) -> str:
+    """Normalize header text to ASCII to avoid RFC2047 encoded-word output."""
+    if value is None:
+        return ''
+    normalized = unicodedata.normalize('NFKD', str(value))
+    ascii_text = normalized.encode('ascii', 'ignore').decode('ascii')
+    ascii_text = ascii_text.replace('\r', ' ').replace('\n', ' ')
+    ascii_text = ' '.join(ascii_text.split())
+    return ascii_text.strip()
+
+
+def _ascii_display_name(value: str) -> str:
+    """ASCII-only display name for address headers."""
+    name = _ascii_header_text(value)
+    if not name:
+        return ''
+    # Remove quote/backslash noise before formataddr applies safe quoting.
+    return name.replace('"', '').replace('\\', '').strip()
+
+
+def _subject_name_from_handle(value: str) -> str:
+    """Derive a readable subject token from a handle/email-like value."""
+    text = _ascii_header_text(value)
+    if not text:
+        return ''
+    if '@' in text:
+        text = text.split('@', 1)[0]
+    # Strip non-alnum characters (e.g. '+' from phone numbers).
+    text = re.sub(r'[^A-Za-z0-9 ]+', '', text)
+    text = ' '.join(text.split())
+    return text.strip()
+
+
+def _format_header_address(userid: str, realname: str, fakedomain: str) -> str:
+    uid = _ascii_header_text(userid)
+    if '@' in uid:
+        addr = uid
+    else:
+        addr = uid + '@' + fakedomain
+    disp = _ascii_display_name(realname)
+    if disp:
+        return formataddr((disp, addr))
+    return formataddr((addr, addr))
+
+
 def mimefromconv(conv: conversation.Conversation, no_background: bool = False) -> MIMEMultipart:
     """Now we take the Conversation object and make a MIME email message out of it..."""
     # Do some sanity-checking on the input Conversation and skip trivial (no message contents) logs
@@ -141,14 +211,7 @@ def mimefromconv(conv: conversation.Conversation, no_background: bool = False) -
     if not local_participant:
         local_participant = conv.participants[0]
 
-    if '@' in local_participant.userid:
-        header_from_userid = local_participant.userid
-    else:
-        header_from_userid = local_participant.userid + '@' + fakedomain
-    if local_participant.realname:
-        header_from = f'"{local_participant.realname}" <{header_from_userid}>'
-    else:
-        header_from = f'"{header_from_userid}" <{header_from_userid}>'
+    header_from = _format_header_address(local_participant.userid, local_participant.realname, fakedomain)
     msg_base['From'] = header_from
 
     # Construct 'To' header - include all other participants
@@ -156,14 +219,7 @@ def mimefromconv(conv: conversation.Conversation, no_background: bool = False) -
     for p in conv.participants:
         if p.userid == local_participant.userid:
             continue
-        if '@' in p.userid:
-            header_to_userid = p.userid
-        else:
-            header_to_userid = p.userid + '@' + fakedomain
-        if p.realname:
-            to_parts.append(f'"{p.realname}" <{header_to_userid}>')
-        else:
-            to_parts.append(f'"{header_to_userid}" <{header_to_userid}>')
+        to_parts.append(_format_header_address(p.userid, p.realname, fakedomain))
     if to_parts:
         msg_base['To'] = ', '.join(to_parts)
     else:
@@ -189,13 +245,37 @@ def mimefromconv(conv: conversation.Conversation, no_background: bool = False) -
         header_service = conv.service
     else:
         header_service = 'Conversation'
-    if conv.get_realname_from_userid(filenameuserid):
-        header_withname = conv.get_realname_from_userid(filenameuserid)
-    else:
-        header_withname = filenameuserid
+    header_withname = _subject_participant_name(conv, local_participant) or filenameuserid
 
     msg_base['Date'] = format_datetime(header_date)
-    msg_base['Subject'] = f'{header_service} with {header_withname} on {header_date.strftime("%a, %b %e %Y")}'
+    safe_header_service = _ascii_header_text(header_service) or 'Conversation'
+    safe_header_name = _ascii_header_text(header_withname)
+    if safe_header_name and (
+        '@' in safe_header_name
+        or safe_header_name.startswith('+')
+        or re.fullmatch(r'[0-9+\-(). ]+', safe_header_name)
+    ):
+        safe_header_name = _subject_name_from_handle(safe_header_name)
+    if not safe_header_name:
+        safe_header_name = _subject_name_from_handle(header_withname)
+    if safe_header_name and safe_header_name == _ascii_header_text(filenameuserid) and to_parts:
+        first_to = next((p for p in conv.participants if p.userid != local_participant.userid), local_participant)
+        to_name = _subject_name_from_handle(first_to.userid or '')
+        if to_name:
+            safe_header_name = to_name
+    if not safe_header_name and to_parts:
+        # fall back to the first destination participant when no better name is available
+        first_to = next((p for p in conv.participants if p.userid != local_participant.userid), local_participant)
+        safe_header_name = _subject_name_from_handle(first_to.userid or '')
+    if not safe_header_name:
+        safe_header_name = _subject_name_from_handle(local_participant.userid or '')
+    if not safe_header_name:
+        safe_header_name = _ascii_header_text(filenameuserid)
+    safe_header_id = _ascii_header_text(filenameuserid)
+    if _is_imessage_conversation(conv) and safe_header_id:
+        msg_base['Subject'] = f'{safe_header_service} with {safe_header_name} #{safe_header_id} on {header_date.strftime("%a, %b %e %Y")}'
+    else:
+        msg_base['Subject'] = f'{safe_header_service} with {safe_header_name} on {header_date.strftime("%a, %b %e %Y")}'
 
     # Determine date format to use in logs - be robust to missing dates
     try:

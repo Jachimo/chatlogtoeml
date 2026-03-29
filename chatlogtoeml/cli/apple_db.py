@@ -28,6 +28,14 @@ def make_out_filename(chat_id: str, startdate, idx: int) -> str:
     return f"{datepart}_{sanitized}_{idx:04d}.eml"
 
 
+def _converted_by_name(argv0: str = None) -> str:
+    raw = argv0 if argv0 is not None else (sys.argv[0] if sys.argv else '')
+    name = os.path.basename(raw or '').strip()
+    if not name or name in ('-', '-c') or name.lower().startswith('python'):
+        return 'db_to_eml'
+    return name
+
+
 def main(argv=None) -> int:
     if argv is None:
         argv = sys.argv[1:]
@@ -103,7 +111,7 @@ def main(argv=None) -> int:
         imsvc = getattr(conv, 'service', None)
         if imsvc:
             eml['X-iMessage-Service'] = imsvc
-        eml['X-Converted-By'] = os.path.basename(sys.argv[0])
+        eml['X-Converted-By'] = _converted_by_name()
 
         try:
             with open(outpath, 'w') as fo:

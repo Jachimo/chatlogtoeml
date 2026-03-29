@@ -7,16 +7,24 @@ from pathlib import Path
 
 try:
     # Prefer package import
+    from chatlogtoeml.cli import apple_db as apple_db_cli
     from chatlogtoeml.parsers import apple_db as apple_db_module
     from chatlogtoeml.parsers import addressbook as addressbook_module
     from chatlogtoeml import conv_to_eml
 except Exception:
+    import apple_db as apple_db_cli
     import apple_db as apple_db_module
     import addressbook as addressbook_module
     import conv_to_eml
 
 
 class TestAppleDBScaffold(unittest.TestCase):
+    def test_converted_by_name_fallback(self):
+        self.assertEqual(apple_db_cli._converted_by_name('-'), 'db_to_eml')
+        self.assertEqual(apple_db_cli._converted_by_name(''), 'db_to_eml')
+        self.assertEqual(apple_db_cli._converted_by_name('/usr/bin/python3'), 'db_to_eml')
+        self.assertEqual(apple_db_cli._converted_by_name('/tmp/bin/db_to_eml'), 'db_to_eml')
+
     def test_parse_file_exists(self):
         self.assertTrue(callable(getattr(apple_db_module, 'parse_file', None)))
 
