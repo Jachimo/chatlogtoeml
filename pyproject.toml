@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "chatlogtoeml"
+version = "0.1.0"
+description = "Convert chat logs and Apple Messages exports to RFC822 EML"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+  "python-dateutil>=2.8.2",
+  "pytz>=2024.1",
+  "pytypedstream>=0.1.0",
+  "NSKeyedUnArchiver>=1.5",
+]
+
+[project.scripts]
+chat_convert = "chatlogtoeml.cli.legacy:main"
+json_to_eml = "chatlogtoeml.cli.ndjson:main"
+db_to_eml = "chatlogtoeml.cli.apple_db:main"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["chatlogtoeml*"]

@@ -2,9 +2,12 @@
 #  Inspired by the data model used by https://github.com/kadin2048/ichat_to_eml
 #  Uses type hints and requires Python 3.6+
 
-from datetime import datetime  # for hints
+from datetime import datetime
 import hashlib
 import copy
+import logging
+
+from .normalize import normalize_user_lowercase
 
 
 class Conversation:
@@ -26,16 +29,14 @@ class Conversation:
 
     def add_participant(self, userid):
         # Avoid duplicates (case-insensitive)
-        if not any(p.userid.lower() == (userid or '').lower() for p in self.participants):
+        userid_norm = normalize_user_lowercase(userid)
+        if not any(normalize_user_lowercase(p.userid) == userid_norm for p in self.participants):
             p = Participant(userid)
             self.participants.append(copy.deepcopy(p))
-        try:
-            if self.localaccount and userid and userid.lower() == self.localaccount.lower():
-                self.set_local_account(userid)
-            if self.remoteaccount and userid and userid.lower() == self.remoteaccount.lower():
-                self.set_remote_account(userid)
-        except Exception:
-            pass
+        if self.localaccount and userid_norm == normalize_user_lowercase(self.localaccount):
+            self.set_local_account(userid)
+        if self.remoteaccount and userid_norm == normalize_user_lowercase(self.remoteaccount):
+            self.set_remote_account(userid)
 
     def get_participant(self, userid):
         for p in self.participants:
@@ -72,21 +73,17 @@ class Conversation:
 
     def set_local_account(self, userid):
         self.localaccount = userid
+        userid_norm = normalize_user_lowercase(userid)
         for p in self.participants:
-            try:
-                if p.userid and userid and p.userid.lower() == userid.lower():
-                    p.position = 'local'
-            except Exception:
-                pass
+            if normalize_user_lowercase(p.userid) == userid_norm:
+                p.position = 'local'
 
     def set_remote_account(self, userid):
         self.remoteaccount = userid
+        userid_norm = normalize_user_lowercase(userid)
         for p in self.participants:
-            try:
-                if p.userid and userid and p.userid.lower() == userid.lower():
-                    p.position = 'remote'
-            except Exception:
-                pass
+            if normalize_user_lowercase(p.userid) == userid_norm:
+                p.position = 'remote'
 
     def userid_islocal(self, userid) -> bool:
         for p in self.participants:
@@ -169,19 +166,19 @@ class Attachment:
                 hasher.update(self.data)
             else:
                 hasher.update(b"" if self.data is None else str(self.data).encode('utf-8'))
-        except Exception:
+        except Exception as e:
             try:
                 hasher.update(b"" if self.data is None else bytes(self.data))
-            except Exception:
-                pass
+            except Exception as fallback_error:
+                logging.debug('Unable to hash attachment data for %s: %s / %s', self.name, e, fallback_error)
         try:
             hasher.update((self.name or '').encode('utf-8'))
-        except Exception:
-            pass
+        except Exception as e:
+            logging.debug('Unable to hash attachment name for content-id generation: %s', e)
         try:
             hasher.update((self.mimetype or '').encode('utf-8'))
-        except Exception:
-            pass
+        except Exception as e:
+            logging.debug('Unable to hash attachment mimetype for content-id generation: %s', e)
         self.contentid = hasher.hexdigest()
 
     def set_payload(self, bindata):

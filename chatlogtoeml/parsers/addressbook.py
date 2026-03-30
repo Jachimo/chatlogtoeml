@@ -176,5 +176,5 @@ def load_address_book(path: str) -> AddressBookData:
     finally:
         try:
             conn.close()
-        except Exception:
-            pass
+        except Exception as e:
+            logging.debug("Failed to close Address Book DB %s: %s", path, e)

@@ -210,5 +210,27 @@ class TestConvToEmlEdgeCases(unittest.TestCase):
         self.assertNotIn('<tel>', raw)
         self.assertNotIn('tel:+15555550977@sms.imessage.invalid', raw)
 
+    def test_unknown_handle_display_name_uses_stripped_phone(self):
+        conv = conversation.Conversation()
+        conv.imclient = 'iMessage'
+        conv.service = 'iMessage'
+        conv.filenameuserid = '12'
+        conv.source_db_basename = 'sms.db'
+        conv.add_participant('local.user@example.test')
+        conv.add_participant('+17033463295')
+        conv.set_local_account('local.user@example.test')
+        conv.add_realname_to_userid('local.user@example.test', 'Local User')
+
+        m = conversation.Message('message')
+        m.msgfrom = '+17033463295'
+        m.text = 'hi'
+        m.date = datetime.datetime(2015, 1, 24, 17, 25, 8, tzinfo=datetime.timezone.utc)
+        conv.add_message(m)
+        conv.startdate = m.date
+
+        eml = conv_to_eml.mimefromconv(conv)
+        raw = eml.as_string()
+        self.assertIn('To: 17033463295 <17033463295@sms.imessage.invalid>', raw)
+
 if __name__ == '__main__':
     unittest.main()

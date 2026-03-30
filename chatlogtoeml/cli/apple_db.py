@@ -6,26 +6,8 @@ import os
 import sys
 
 from .. import conv_to_eml
+from .common import make_out_filename
 from ..parsers import apple_db
-
-
-def sanitize_chat_id(chat_id: str, maxlen: int = 64) -> str:
-    # Replace non-alnum with underscores, trim to maxlen, and strip leading underscores
-    safe = ''.join([c if c.isalnum() else '_' for c in (chat_id or '')])
-    safe = safe[:maxlen]
-    return safe.lstrip('_')
-
-
-def make_out_filename(chat_id: str, startdate, idx: int) -> str:
-    # Prefer full timestamp first for sortable filenames: YYYY-MM-DDTHHMMSS
-    if hasattr(startdate, 'strftime'):
-        datepart = startdate.strftime('%Y-%m-%dT%H%M%S')
-    elif hasattr(startdate, 'date'):
-        datepart = startdate.date().isoformat()
-    else:
-        datepart = 'nodate'
-    sanitized = sanitize_chat_id(chat_id) or 'chat'
-    return f"{datepart}_{sanitized}_{idx:04d}.eml"
 
 
 def _converted_by_name(argv0: str = None) -> str:

@@ -1,0 +1,70 @@
+version = 1
+revision = 3
+requires-python = ">=3.9"
+
+[[package]]
+name = "chatlogtoeml"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "nskeyedunarchiver" },
+    { name = "python-dateutil" },
+    { name = "pytypedstream" },
+    { name = "pytz" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "nskeyedunarchiver", specifier = ">=1.5" },
+    { name = "python-dateutil", specifier = ">=2.8.2" },
+    { name = "pytypedstream", specifier = ">=0.1.0" },
+    { name = "pytz", specifier = ">=2024.1" },
+]
+
+[[package]]
+name = "nskeyedunarchiver"
+version = "1.5.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/50/68/8e48609f2c3554917d3c305e5ec9ba8f3d1ddcadba221d52c1f63b713ded/nskeyedunarchiver-1.5.2.tar.gz", hash = "sha256:d9a2d5d48ea9e2c78d31bfbfc4a97c02794192f3b4548342d727d54bdd20beba", size = 15835, upload-time = "2025-06-11T16:01:57.958Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c8/c9/5d3c2d9a308310118dca63a0b763d09a12006a6f5d762dbe5e385aeaa318/nskeyedunarchiver-1.5.2-py3-none-any.whl", hash = "sha256:0e52044d137e01e15ab2b18a8f76ed14b2c3555da61190f4679e52892a37cfa0", size = 15926, upload-time = "2025-06-11T16:01:56.355Z" },
+]
+
+[[package]]
+name = "python-dateutil"
+version = "2.9.0.post0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "six" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/66/c0/0c8b6ad9f17a802ee498c46e004a0eb49bc148f2fd230864601a86dcf6db/python-dateutil-2.9.0.post0.tar.gz", hash = "sha256:37dd54208da7e1cd875388217d5e00ebd4179249f90fb72437e91a35459a0ad3", size = 342432, upload-time = "2024-03-01T18:36:20.211Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ec/57/56b9bcc3c9c6a792fcbaf139543cee77261f3651ca9da0c93f5c1221264b/python_dateutil-2.9.0.post0-py2.py3-none-any.whl", hash = "sha256:a8b2bc7bffae282281c8140a97d3aa9c14da0b136dfe83f850eea9a5f7470427", size = 229892, upload-time = "2024-03-01T18:36:18.57Z" },
+]
+
+[[package]]
+name = "pytypedstream"
+version = "0.1.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/47/d2/4632904c21890b1f397e6e9ef823b216f6f0a3a767897b092f592f16b90e/pytypedstream-0.1.0.tar.gz", hash = "sha256:c3b01790e667189966e98fcfeb638cc0541358ea7348745619fe58e3e8c9fd51", size = 84192, upload-time = "2023-06-26T23:43:35.555Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/0d/1a/dbbbad9690c24506aec4571bc6613a5625b163b1607777109c9dabdbec07/pytypedstream-0.1.0-py3-none-any.whl", hash = "sha256:499920d4cb8bec8fd9d9cdd4c6312765eb418c398c10371ab1c9c0051104d278", size = 65857, upload-time = "2023-06-26T23:43:32.197Z" },
+]
+
+[[package]]
+name = "pytz"
+version = "2026.1.post1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/56/db/b8721d71d945e6a8ac63c0fc900b2067181dbb50805958d4d4661cf7d277/pytz-2026.1.post1.tar.gz", hash = "sha256:3378dde6a0c3d26719182142c56e60c7f9af7e968076f31aae569d72a0358ee1", size = 321088, upload-time = "2026-03-03T07:47:50.683Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/10/99/781fe0c827be2742bcc775efefccb3b048a3a9c6ce9aec0cbf4a101677e5/pytz-2026.1.post1-py2.py3-none-any.whl", hash = "sha256:f2fd16142fda348286a75e1a524be810bb05d444e5a081f37f7affc635035f7a", size = 510489, upload-time = "2026-03-03T07:47:49.167Z" },
+]
+
+[[package]]
+name = "six"
+version = "1.17.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/94/e7/b2c673351809dca68a0e064b6af791aa332cf192da575fd474ed7d6f16a2/six-1.17.0.tar.gz", hash = "sha256:ff70335d468e7eb6ec65b95b99d3a2836546063f63acc5171de367e834932a81", size = 34031, upload-time = "2024-12-04T17:35:28.174Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b7/ce/149a00dd41f10bc29e5921b496af8b574d8413afcd5e30dfa0ed46c2cc5e/six-1.17.0-py2.py3-none-any.whl", hash = "sha256:4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274", size = 11050, upload-time = "2024-12-04T17:35:26.475Z" },
+]

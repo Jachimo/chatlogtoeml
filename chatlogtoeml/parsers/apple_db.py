@@ -14,27 +14,16 @@ import datetime
 import logging
 import os
 import plistlib
-from typing import Iterable, Optional, List, Dict, Any
+from typing import TYPE_CHECKING, Iterable, Optional, List, Dict, Any
 
 import typedstream  # hard dependency: pytypedstream
 import NSKeyedUnArchiver  # hard dependency: NSKeyedUnArchiver
 
-# FIXME: this is an ugly hack to avoid circular import, should be refactored
-try:
-    from . import imessage_json
-except Exception:
-    # When imported as a top-level module fallback
-    import imessage_json
-try:
-    from . import addressbook
-except Exception:
-    import addressbook
+from .imessage_common import build_conversation_from_segment, segment_messages
+from . import addressbook
 
-# Conversation model
-try:
-    from chatlogtoeml import conversation
-except Exception:
-    import conversation
+if TYPE_CHECKING:
+    from ..conversation import Conversation
 
 # Apple epoch (2001-01-01) -> Unix epoch offset in seconds
 # NOTE: Possible this epoch was not consistently used, esp. in early iChat/iOS versions
@@ -189,13 +178,13 @@ def _extract_text_candidates(obj: Any, out: List[str], seen: Optional[set] = Non
     try:
         if hasattr(obj, 'value'):
             _extract_text_candidates(getattr(obj, 'value'), out, seen, depth + 1)
-    except Exception:
-        pass
+    except Exception as e:
+        logging.debug('Unable to extract candidate text via .value on %s: %s', type(obj).__name__, e)
     try:
         if hasattr(obj, '__dict__'):
             _extract_text_candidates(vars(obj), out, seen, depth + 1)
-    except Exception:
-        pass
+    except Exception as e:
+        logging.debug('Unable to extract candidate text via __dict__ on %s: %s', type(obj).__name__, e)
 
 
 def _choose_best_text(candidates: List[str]) -> Optional[str]:
@@ -704,8 +693,8 @@ def _infer_local_handle(conn: sqlite3.Connection) -> Optional[str]:
         row = cur.fetchone()
         if row and row[0]:
             return addressbook.normalize_handle(row[0])
-    except Exception:
-        pass
+    except Exception as e:
+        logging.debug('Could not infer local handle from message.account: %s', e)
 
     # Fallback to chat.account_login used by some DB versions.
     try:
@@ -722,8 +711,8 @@ def _infer_local_handle(conn: sqlite3.Connection) -> Optional[str]:
         row = cur.fetchone()
         if row and row[0]:
             return addressbook.normalize_handle(row[0])
-    except Exception:
-        pass
+    except Exception as e:
+        logging.debug('Could not infer local handle from chat.account_login: %s', e)
     return None
 
 
@@ -738,7 +727,7 @@ def parse_file(
         stream: bool = False,
         embed_attachments: bool = False,
         attachment_root: Optional[str] = None,
-    ) -> Iterable[conversation.Conversation]:
+    ) -> Iterable["Conversation"]:
     """Parse an Apple Messages SQLite DB and yield Conversation objects.
 
     Creates same raw message dict that 
@@ -836,7 +825,7 @@ def parse_file(
                     _row_get(row, 'attributedBody'),
                     _row_get(row, 'payload_data'),
                 ),
-                'date': date_iso,  # ISO string for imessage_json._parse_date
+                'date': date_iso,
                 'is_from_me': is_from_me,
                 'service': _row_get(row, 'service') if 'service' in row.keys() else None,
                 'sender': sender,
@@ -856,10 +845,10 @@ def parse_file(
 
             messages_by_chat.setdefault(chat_identifier, []).append(raw)
 
-        # Segment into chats and yield Conversations via imessage_json.build_conversation_from_segment
+        # Segment into chats and yield Conversations using shared iMessage helpers.
         for chat_id, msgs in messages_by_chat.items():
-            for segment in imessage_json.segment_messages(msgs, idle_hours=idle_hours, min_messages=min_messages, max_messages=max_messages, max_days=max_days):
-                conv = imessage_json.build_conversation_from_segment(segment, chat_id, path, local_handle, embed_attachments=embed_attachments)
+            for segment in segment_messages(msgs, idle_hours=idle_hours, min_messages=min_messages, max_messages=max_messages, max_days=max_days):
+                conv = build_conversation_from_segment(segment, chat_id, path, local_handle, embed_attachments=embed_attachments)
 
                 # Enrich participant real names from Address Book
                 if ab_data.handle_to_name:
@@ -884,16 +873,13 @@ def parse_file(
                                 break
 
                 # record source DB basename for fakedomain logic
-                try:
-                    conv.source_db_basename = os.path.basename(path)
-                except Exception:
-                    pass
+                conv.source_db_basename = os.path.basename(path)
                 yield conv
     finally:
         try:
             conn.close()
-        except Exception:
-            pass
+        except Exception as e:
+            logging.debug('Failed to close sqlite connection for %s: %s', path, e)
 
 
 __all__ = [

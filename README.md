@@ -36,6 +36,12 @@ Groups records by chat identifier, optionally streams per-chat shards for large 
 
 Run the unit test suite with:
 
+```bash
+uv run python -m unittest discover -s tests -v
+```
+
+Or, without uv:
+
 ```
 python3 -m unittest discover -s tests -v
 ```
@@ -62,7 +68,22 @@ and generator scripts in more detail.
 
 ## Dependencies
 
-Install runtime dependencies with:
+Preferred: use uv for environment isolation and dependency management.
+
+```bash
+uv sync
+```
+
+Then run CLIs/tests in the managed environment:
+
+```bash
+uv run db_to_eml --help
+uv run json_to_eml --help
+uv run chat_convert --help
+uv run python -m unittest discover -s tests -v
+```
+
+Without uv, install runtime dependencies with:
 
 ```bash
 pip install pytz python-dateutil pytypedstream NSKeyedUnArchiver

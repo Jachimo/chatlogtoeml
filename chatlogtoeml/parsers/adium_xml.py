@@ -89,18 +89,6 @@ def toconv(infile: BinaryIO) -> conversation.Conversation:
             if e.hasAttribute('alias'):  # Facebook logs have an 'alias' attribute containing real name
                 logging.debug(f'Alias {e.getAttribute("alias")} found for user id {msg.msgfrom}')
                 conv.add_realname_to_userid(msg.msgfrom, e.getAttribute('alias'))
-            ## Start debugging TODO remove me
-            logging.debug(f'Added participant (msg.msgfrom) with user id: {msg.msgfrom.lower()}')
-            logging.debug(f'Should {msg.msgfrom} be considered local?  {(msg.msgfrom.lower() == conv.localaccount)}')
-            logging.debug(f'Should {msg.msgfrom} be considered remote?  {(msg.msgfrom.lower() == conv.remoteaccount)}')
-            logging.debug(f'Participant user id list contains {conv.listparticipantuserids()}')
-            for pid in conv.listparticipantuserids():
-                logging.debug(f'\n  User ID: {conv.get_participant(pid).userid}'
-                              f'\n  Position: {conv.get_participant(pid).position}'
-                              f'\n  Is Local? {conv.userid_islocal(pid)}'
-                              f'\n  Is Remote? {conv.userid_isremote(pid)}'
-                              f'\n  Has realname? {conv.get_participant(pid).realname}')
-            ## End Debugging
             msg.text = get_inner_text(e)
             logging.debug('Message text is: ' + msg.text)
             if e.firstChild.nodeName == 'div':
@@ -112,7 +100,7 @@ def toconv(infile: BinaryIO) -> conversation.Conversation:
                 msg.html = e.firstChild.toxml()
             logging.debug('Message HTML is: ' + msg.html)
             conv.add_message(msg)
-            logging.debug('End of message processing\n')  # TODO remove me
+            logging.debug('End of message processing')
 
     # Get date from filename, if present; otherwise use timestamp from first message
     if (conv.origfilename.find('(') != -1) and (conv.origfilename.find(')') != -1):

@@ -187,6 +187,10 @@ def _format_header_address(userid: str, realname: str, fakedomain: str) -> str:
     disp = _ascii_display_name(realname)
     if disp:
         return formataddr((disp, addr))
+    # No contact name available: fall back to a readable handle token (e.g., phone digits).
+    fallback_disp = _subject_name_from_handle(uid)
+    if fallback_disp:
+        return formataddr((fallback_disp, addr))
     return formataddr((addr, addr))
 
 
@@ -207,7 +211,7 @@ def mimefromconv(conv: conversation.Conversation, no_background: bool = False) -
         raise ValueError(error_msg)
     if len(conv.listparticipantuserids()) == 1:
         # Allow single-participant conversations (e.g., exported threads with only local entries)
-        logging.warning('Conversation has only one participant; constructing EML with that participant as both From and To.')
+        logging.debug('Conversation has only one participant; constructing EML with that participant as both From and To.')
 
     # Create a base message object for the entire conversation's components
     msg_base = MIMEMultipart('related')
@@ -368,11 +372,11 @@ def mimefromconv(conv: conversation.Conversation, no_background: bool = False) -
                 line.append('</span>')
             if message.msgfrom:
                 if conv.userid_islocal(message.msgfrom):   # for local participant CSS
-                    line.append('<span class="localname">')
+                    line.append('<span class="localname" style="font-weight: bold; color: blue;">')
                 elif conv.userid_isremote(message.msgfrom):  # for remote participant CSS
-                    line.append('<span class="remotename">')
+                    line.append('<span class="remotename" style="font-weight: bold; color: red;">')
                 else:
-                    line.append('<span class="name">')  # catchall for indeterminate participants
+                    line.append('<span class="name" style="font-weight: bold; color: black;">')  # catchall for indeterminate participants
                 if conv.get_realname_from_userid(message.msgfrom):
                     line.append(conv.get_realname_from_userid(message.msgfrom) + ':&ensp;')
                 else:
@@ -423,8 +427,8 @@ def mimefromconv(conv: conversation.Conversation, no_background: bool = False) -
                         if att.mimetype:
                             try:
                                 attachment_part.add_header('Content-Type', att.mimetype, name=att.name)
-                            except Exception:
-                                pass
+                            except Exception as e:
+                                logging.debug('Failed to set attachment Content-Type header (%s, %s): %s', att.name, att.mimetype, e)
                         msg_base.attach(attachment_part)  # attach to the top-level object, multipart/related
                     else:
                         # No binary payload to attach. If original path is known, add a header to indicate missing payload
