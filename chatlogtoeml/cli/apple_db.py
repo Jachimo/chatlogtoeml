@@ -27,7 +27,7 @@ def main(argv=None) -> int:
     parser.add_argument('--local-handle', help='Local account handle (phone/email) to use for From:', default=None)
     parser.add_argument('--address-book', help='Optional path to AddressBook.sqlitedb for participant real-name resolution', default=None)
     parser.add_argument('--attachment-root', help='Override root for attachment paths (for backups)', default=None)
-    parser.add_argument('--idle-hours', type=float, default=4.0, help='Idle gap hours to segment conversations')
+    parser.add_argument('--idle-hours', type=float, default=8.0, help='Idle gap hours to segment conversations')
     parser.add_argument('--min-messages', type=int, default=2, help='Minimum messages to keep a segment')
     parser.add_argument('--max-messages', type=int, default=0, help='Force split at this many messages (0=unlimited)')
     parser.add_argument('--max-days', type=int, default=0, help='Force split if segment spans more than N days (0=unlimited)')

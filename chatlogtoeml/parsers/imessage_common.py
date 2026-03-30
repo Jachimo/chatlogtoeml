@@ -114,7 +114,7 @@ def _raw_to_message(obj: dict, local_handle: Optional[str]) -> conversation.Mess
     return msg
 
 
-def segment_messages(raw_msgs: List[dict], idle_hours: float = 4.0, min_messages: int = 2,
+def segment_messages(raw_msgs: List[dict], idle_hours: float = 8.0, min_messages: int = 2,
                      max_messages: int = 0, max_days: int = 0) -> Iterable[List[dict]]:
     """Split raw message dicts into segments based on idle gap and limits."""
     if not raw_msgs:

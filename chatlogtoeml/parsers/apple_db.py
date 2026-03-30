@@ -720,7 +720,7 @@ def parse_file(
         path: str,
         local_handle: Optional[str] = None,
         addressbook_path: Optional[str] = None,
-        idle_hours: float = 4.0,
+        idle_hours: float = 8.0,
         min_messages: int = 2,
         max_messages: int = 0,
         max_days: int = 0,
