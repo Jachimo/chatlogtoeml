@@ -35,6 +35,7 @@ def main(argv=None) -> int:
     parser.add_argument('--embed-attachments', dest='embed_attachments', action='store_true', help=argparse.SUPPRESS)
     parser.add_argument('--no-attach', dest='embed_attachments', action='store_false', help='Do not embed attachment payloads in EML; keep path metadata only')
     parser.add_argument('--no-background', action='store_true', help='Strip background style from HTML')
+    parser.set_defaults(clobber=True)
     parser.add_argument('--clobber', action='store_true', help='Overwrite existing .eml files')
     parser.add_argument('--debug', action='store_true', help='Enable debug logging')
     args = parser.parse_args(argv)
