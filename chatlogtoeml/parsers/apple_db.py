@@ -725,7 +725,7 @@ def parse_file(
         max_messages: int = 0,
         max_days: int = 0,
         stream: bool = False,
-        embed_attachments: bool = False,
+        embed_attachments: bool = True,
         attachment_root: Optional[str] = None,
     ) -> Iterable["Conversation"]:
     """Parse an Apple Messages SQLite DB and yield Conversation objects.

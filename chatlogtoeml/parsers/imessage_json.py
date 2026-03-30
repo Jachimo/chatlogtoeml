@@ -3,9 +3,8 @@
 
 Notes:
 - This implementation is intentionally conservative and easy to read. It builds
-  Conversation objects from NDJSON records and performs simple segmentation by
-  idle gap. It preserves visible metadata but does not (yet) attach binary
-  payloads from attachment paths.
+    Conversation objects from NDJSON records and performs simple segmentation by
+    idle gap.
 - Improve streaming / memory behavior later (see DEV_PLAN.md).
 """
 
@@ -31,7 +30,7 @@ def parse_file(path: str, local_handle: Optional[str] = None,
                idle_hours: float = 8.0, min_messages: int = 2,
                max_messages: int = 0, max_days: int = 0,
                stream: bool = False, stream_dir: Optional[str] = None,
-               embed_attachments: bool = False) -> Iterable["Conversation"]:
+               embed_attachments: bool = True) -> Iterable["Conversation"]:
     """Main entry: parse NDJSON and yield Conversation objects (segmented).
 
     If stream=True, messages are sharded to per-chat temporary files to avoid

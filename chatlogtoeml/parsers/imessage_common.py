@@ -8,12 +8,36 @@ import datetime
 import html as _html
 import logging
 import os
+import time
 from typing import Iterable, List, Optional
 
 import dateutil.parser
 
 from .. import conversation
 from ..normalize import normalize_user
+
+
+_ATTACH_READ_COUNTER = 0
+
+
+def _attachment_read_pacing() -> None:
+    """Optionally sleep between attachment reads to reduce I/O burst load."""
+    global _ATTACH_READ_COUNTER
+    _ATTACH_READ_COUNTER += 1
+    try:
+        pause_ms = int(os.getenv('ATTACH_READ_PAUSE_MS', '0'))
+    except Exception:
+        pause_ms = 0
+    try:
+        every = int(os.getenv('ATTACH_READ_PAUSE_EVERY', '1'))
+    except Exception:
+        every = 1
+    if pause_ms <= 0:
+        return
+    if every <= 0:
+        every = 1
+    if _ATTACH_READ_COUNTER % every == 0:
+        time.sleep(pause_ms / 1000.0)
 
 
 # Reaction rendering utilities
@@ -234,6 +258,7 @@ def build_conversation_from_segment(segment: List[dict], chat_identifier: str,
                 try:
                     with open(path, 'rb') as af:
                         att.data = af.read()
+                    _attachment_read_pacing()
                 except Exception:
                     att.data = b''
                     logging.warning('Failed to read attachment path: %s', path)

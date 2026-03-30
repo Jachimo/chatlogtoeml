@@ -9,10 +9,13 @@ Shared logic lives in the `chatlogtoeml` package, with thin CLI wrappers under `
 ### `db_to_eml` (Apple iMessage sms.db / chat.db)
 
 ```
-./bin/db_to_eml path/to/chat.db [outdir] [--local-handle <handle>] [--address-book <AddressBook.sqlitedb>] [--attachment-root <dir>] [--embed-attachments] [--idle-hours N] [--min-messages N] [--max-messages N] [--max-days N] [--no-background] [--clobber] [--debug]
+./bin/db_to_eml path/to/chat.db [outdir] [--local-handle <handle>] [--address-book <AddressBook.sqlitedb>] [--attachment-root <dir>] [--no-attach] [--idle-hours N] [--min-messages N] [--max-messages N] [--max-days N] [--no-background] [--clobber] [--debug]
 ```
 
-Parses Apple Messages SQLite databases (macOS `chat.db` or iOS `sms.db`), resolves attachment metadata and optional payloads, segments conversations by idle gaps/size/duration, and writes per-segment `.eml` files. Use `--attachment-root` to point to a directory containing attachment files when they are not located relative to the DB. Use `--embed-attachments` to include binary payloads in the resulting EML; when embedding is not possible the original path will be recorded (`X-Original-Attachment-Path`).
+Parses Apple Messages SQLite databases (macOS `chat.db` or iOS `sms.db`), resolves attachment metadata and payloads by default, segments conversations by idle gaps/size/duration, and writes per-segment `.eml` files. Use `--attachment-root` to point to a directory containing attachment files when they are not located relative to the DB. Use `--no-attach` to skip embedding binary payloads; in that mode the original path will be recorded (`X-Original-Attachment-Path`).
+
+For a convenience wrapper that mirrors the Adium helper style and runs conversion with lowered CPU/I/O priority, use `./ios_convert.sh <sms_root_or_db> <outdir> [AddressBook.sqlitedb] [-- <extra db_to_eml args>]`.
+The wrapper uses `nice` plus `ionice` when available, and enables conservative attachment-read pacing by default (`ATTACH_READ_PAUSE_MS=15`, `ATTACH_READ_PAUSE_EVERY=1`). Override with environment variables, for example: `ATTACH_READ_PAUSE_MS=0` to disable pacing, `USE_IONICE=0` to skip `ionice`, or `NICE_LEVEL=15` to lower CPU priority further.
 
 Optionally, pass `--address-book /path/to/AddressBook.sqlitedb` to translate handles into real contact names. The parser uses `ABPerson` + `ABMultiValue` for contact lookups and `ABStore.MeIdentifier` to identify the DB owner ("me"), so local messages can render with the owner’s real name in `From:` instead of a generic handle.
 
@@ -27,10 +30,10 @@ Detects `.chatlog` bundles, `.xml`, `.AdiumHTMLLog`, or `.html`, runs the approp
 ### `json_to_eml` (imessage-exporter NDJSON)
 
 ```
-./bin/json_to_eml <input.ndjson> <outdir> [--local-handle <handle>] [--idle-hours N] [--min-messages N] [--max-messages N] [--max-days N] [--stream] [--stream-tempdir DIR] [--embed-attachments] [--no-background] [--clobber] [--debug]
+./bin/json_to_eml <input.ndjson> <outdir> [--local-handle <handle>] [--idle-hours N] [--min-messages N] [--max-messages N] [--max-days N] [--stream] [--stream-tempdir DIR] [--no-attach] [--no-background] [--clobber] [--debug]
 ```
 
-Groups records by chat identifier, optionally streams per-chat shards for large files, segments conversations by idle gaps/size/duration, and yields individual `.eml` segments enriched with metadata (chat GUID, service, segment indexes, reactions, attachments, etc.). Streaming is auto-enabled for files larger than 50 MiB. Embedded attachments and background stripping are optional.
+Groups records by chat identifier, optionally streams per-chat shards for large files, segments conversations by idle gaps/size/duration, and yields individual `.eml` segments enriched with metadata (chat GUID, service, segment indexes, reactions, attachments, etc.). Streaming is auto-enabled for files larger than 50 MiB. Attachment payloads are embedded by default; use `--no-attach` to disable embedding. Background stripping remains optional.
 
 ### Testing
 
