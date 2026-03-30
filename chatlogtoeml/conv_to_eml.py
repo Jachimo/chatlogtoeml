@@ -329,7 +329,7 @@ def mimefromconv(conv: conversation.Conversation, no_background: bool = False) -
                 line_parts.append('(' + msg.date.strftime(datefmt) + ')')
             line_parts.append(msg.text)
             text_lines.append(' '.join(line_parts))
-    mimetext = MIMEText('\n'.join(text_lines), 'text')
+    mimetext = MIMEText('\n'.join(text_lines), 'plain')
     msg_texts.attach(mimetext)  # Attach the plaintext component as one part of (multipart/alternative)
 
     # Construct html_lines the same way to produce HTML version
