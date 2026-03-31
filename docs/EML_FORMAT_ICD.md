@@ -1,8 +1,8 @@
 # Interface Control Document: Chat Log EML Archive Format
 
 **Document ID:** chatlogtoeml-ICD-001  
-**Revision:** 1.0  
-**Date:** 2026-03-30  
+**Revision:** 1.1  
+**Date:** 2026-03-31  
 **Status:** DRAFT  
 
 ---
@@ -13,6 +13,8 @@
 2. [Normative References](#2-normative-references)  
 3. [Overview](#3-overview)  
 4. [MIME Structure](#4-mime-structure)  
+   - 4.1 [`multipart/alternative` Internal Ordering](#41-multipartalternative-internal-ordering)  
+   - 4.2 [HTML Body Styling](#42-html-body-styling)  
 5. [Standard RFC 5322 Headers](#5-standard-rfc-5322-headers)  
 6. [Pseudo-Address Construction](#6-pseudo-address-construction)  
 7. [Subject Line Format](#7-subject-line-format)  
@@ -99,9 +101,22 @@ Content-Type: multipart/related
 
 **Rationale for `multipart/related`:** The HTML body references embedded image attachments by `Content-ID` URI (`cid:` scheme, RFC 2392). Using `multipart/related` as the outer type lets compliant mail clients render those images inline within the HTML body.
 
-**Part ordering:** The `multipart/alternative` body block is always the first part so that mail clients which display the earliest part have immediate access to the readable transcript. Image attachments are inserted before the index attachment so they can be referenced by the HTML part. The index attachment is always last.
+**Part ordering within `multipart/related`:** The `multipart/alternative` body block is always the **first** part so that mail clients which display the earliest part have immediate access to the readable transcript. Image attachments follow, inserted between the body block and the index attachment so they can be referenced by the HTML part. The index attachment is always last.
 
-### 4.1 HTML Body Styling
+### 4.1 `multipart/alternative` Internal Ordering
+
+Within the `multipart/alternative` block, the parts are ordered as follows:
+
+1. `text/plain` — **first** (lowest fidelity)
+2. `text/html` — **last** (highest fidelity)
+
+**This ordering is normative and must not be reversed.**
+
+**Rationale:** RFC 2046 § 5.1.4 specifies that in a `multipart/alternative` body, alternatives should appear in increasing order of preference, with the *most preferred* (highest fidelity) format listed *last*. Mail clients are expected to render the last part they are capable of displaying.
+
+Thunderbird follows this rule strictly: it selects the **last** MIME alternative it can render. If `text/html` were placed before `text/plain`, Thunderbird would display only the plain-text version, ignoring the HTML transcript entirely. The `text/plain` part is therefore always emitted first, and `text/html` always last, to ensure compliant mail clients (including Thunderbird) display the richly formatted HTML transcript.
+
+### 4.2 HTML Body Styling
 
 The HTML part references a CSS stylesheet that is embedded directly in the `<head>` of the HTML document (not as a separate MIME part). The stylesheet defines the following classes:
 
@@ -222,18 +237,23 @@ All display names are ASCII-only (non-ASCII characters are dropped after NFKD no
 When the source is an iMessage conversation (`service == "iMessage"`, `source_db_basename` starts with `sms` or `chat`):
 
 ```
-{service} with {participant_name} #{chat_id} on {day}, {month} {dd} {year}
+{service} with {participant_name}[ ({chat_id})] on {day}, {month} {dd} {year}
 ```
 
-**Example:**
+**Examples:**
 ```
-iMessage with Alice #42 on Tue, Jan 15 2019
+iMessage with Alice on Tue, Jan 15 2019
+iMessage with Alice (family-group@example.com) on Tue, Jan 15 2019
 ```
 
 Where:
 - `{service}` is the value of `conv.service` (e.g., `iMessage`), ASCII-normalized.
 - `{participant_name}` is the first non-local participant's real name, or a sanitized handle token if no real name is available. Phone-number handles are stripped to digits only.
-- `#{chat_id}` is `conv.filenameuserid`, the numeric internal chat identifier from the Apple database. This is omitted for non-iMessage conversations.
+- `({chat_id})` is an optional suffix appended when `conv.filenameuserid` has clear human meaning — specifically when it contains alphabetic or email-like characters (e.g., `family-group@example.com`). It is **omitted** for:
+  - Purely numeric or phone-like identifiers (e.g., `42`, `+15555551234`).
+  - Apple chat-GUID forms (e.g., `SMS;-;+15555551234`).
+  - UUID- or hex-digest-like opaque strings.
+  - Identifiers containing no alphabetic or `@` characters.
 - The date uses Python's `%a, %b %e %Y` strftime format.
 
 ### 7.2 Non-iMessage / Legacy Conversations

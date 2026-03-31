@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: ["main"]
 
+# Minimal read-only permissions; individual jobs don't need write access.
+permissions:
+  contents: read
+
 jobs:
   lint:
     name: Lint
