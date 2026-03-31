@@ -52,6 +52,9 @@ def apple_ts_to_dt(ts: Optional[int]) -> Optional[datetime.datetime]:
     """Convert Apple DB timestamp (seconds/millis/micros/nanos since 2001-01-01)
     into a timezone-aware UTC datetime. Returns None on parse failure.
     """
+    # The Apple DB historically stored timestamps at varying precisions
+    # (seconds, milliseconds, microseconds, nanoseconds). Detect magnitude
+    # and scale to seconds since Apple epoch before converting to UTC.
     if ts is None:
         return None
     try:
@@ -537,6 +540,10 @@ def _resolve_attachment_path(raw_path: Optional[str], db_path: str, attachment_r
     - paths rooted at ~/Library/SMS/Attachments/... (remapped to attachment_root)
     - relative paths (resolved against attachment_root first, then DB directory)
     """
+    # This resolver tries several heuristics because exported DBs and
+    # forensic copies may reference attachments as absolute macOS paths,
+    # tilde-prefixed backup paths, or relative names. Prefer the provided
+    # `attachment_root` extraction directory to map these into local files.
     if not raw_path:
         return None
     p = str(raw_path).strip()

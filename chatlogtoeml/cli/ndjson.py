@@ -48,12 +48,17 @@ def main(argv=None) -> int:
         fsize = os.path.getsize(infile)
     except Exception:
         fsize = 0
+    # If input file is larger than this threshold, auto-enable streaming to
+    # shard per-chat data to disk to bound memory usage. Threshold is in bytes.
     AUTOSTREAM_THRESHOLD = 50 * 1024 * 1024
     if not stream and fsize > AUTOSTREAM_THRESHOLD:
         stream = True
         logging.info('Input file large (%d bytes) - enabling streaming shards', fsize)
 
     idx_counters = {}
+    # Wrap the top-level conversion loop so a single unexpected error results
+    # in a non-zero exit; this mirrors the error-handling behavior used by the
+    # Apple DB CLI and makes batch runs more robust.
     try:
         for conv in imessage_json.parse_file(
             infile,

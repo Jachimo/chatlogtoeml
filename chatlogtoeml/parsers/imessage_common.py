@@ -104,6 +104,12 @@ def _group_reactions(reaction_list):
     return grouped
 
 
+# Reaction rendering: reactions are represented as small UI fragments. We
+# intentionally map a canonical set of reaction types to emoji and fall
+# back to textual labels when unknown; grouping makes multi-actor reactions
+# concise in both HTML and text outputs.
+
+
 def _render_reactions_html(reaction_list):
     grouped = _group_reactions(reaction_list)
     parts = []

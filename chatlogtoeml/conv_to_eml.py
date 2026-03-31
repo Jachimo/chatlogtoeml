@@ -167,6 +167,11 @@ def _subject_identifier_suffix(subject_name: str, identifier: str) -> str:
 
     Intentionally avoids opaque IDs and numeric delimiters in Subject lines.
     """
+    # Rationale: subjects should remain human-readable. This function filters
+    # out chat-internal or opaque identifiers (UUIDs, purely-numeric phone
+    # tokens, and database-local ids) so the Subject line does not become
+    # cluttered with meaningless strings. Only keep identifiers that contain
+    # alphabetic or email-like structure which are likely to help a reader.
     ident = _ascii_header_text(identifier)
     if not ident:
         return ''
@@ -264,6 +269,9 @@ def _make_message_index_part(conv: conversation.Conversation):
     if not guids:
         return None, None
 
+    # Sort GUIDs before hashing so the index fingerprint is order-insensitive.
+    # This ensures two segments containing the same set of messages produce
+    # the same SHA-256 even when insertion order differs across sources.
     sorted_guids = sorted(guids)
     digest = hashlib.sha256('\n'.join(sorted_guids).encode('utf-8')).hexdigest()
 
@@ -395,7 +403,10 @@ def mimefromconv(conv: conversation.Conversation, no_background: bool = False) -
     else:
         msg_base['Subject'] = f'{safe_header_service} with {safe_header_name} on {header_date.strftime("%a, %b %e %Y")}'
 
-    # Determine date format to use in logs - be robust to missing dates
+    # Determine date format to use in logs - be robust to missing dates.
+    # Note: when message datetimes are naive (no tzinfo) we display them
+    # as UTC to avoid ambiguity. This preserves previous behavior while
+    # making the timezone explicit in plaintext/event renderings.
     try:
         youngest = conv.getyoungestmessage().date
         oldest = conv.getoldestmessage().date
@@ -489,6 +500,10 @@ def mimefromconv(conv: conversation.Conversation, no_background: bool = False) -
             line.append('<p class="message">')
             if message.date:
                 line.append('<span class="timestamp">')
+                # Keep legacy HTML compact timestamp formatting here (no
+                # timezone token) to preserve the previous visual layout in
+                # generated HTML. Plain-text lines above include timezone names
+                # for clarity.
                 line.append('(' + message.date.strftime(datefmt) + ')&nbsp;')
                 line.append('</span>')
             if message.msgfrom:

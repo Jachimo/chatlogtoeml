@@ -21,6 +21,9 @@ class Conversation:
         self.localaccount: str = ''  # userid of local IM account
         self.remoteaccount: str = ''  # userid of remote IM account
         self.participants: list = []  # List of Participant objects
+        # Optional date bounds for the conversation segment. May be None
+        # when messages are missing or unparseable; consumers should handle
+        # these being absent gracefully.
         self.startdate: Optional[datetime] = None
         self.enddate: Optional[datetime] = None
         self.messages: list = []  # List of Message objects
@@ -67,9 +70,14 @@ class Conversation:
         self.messages.append(message)
 
     def getoldestmessage(self):
+        # Sorting uses Message.__lt__ which handles None dates; return first
+        # element of the sorted list as the oldest message.
         return sorted(self.messages)[0]
 
     def getyoungestmessage(self):
+        # Return the last element after sorting to obtain the most recent
+        # message. Sorting is stable/deterministic for equal-dates via
+        # fallback comparisons.
         return sorted(self.messages)[-1]
 
     def set_local_account(self, userid):
@@ -126,10 +134,13 @@ class Message:
 
     def __eq__(self, other):
         """Define equality for purposes of sorting"""
-        if self.guid and other.guid:  # if GUIDs are present on both, depend on them for equivalency
+        # If both messages carry stable GUIDs prefer that for equivalence
+        # checks; otherwise compare full dictionaries as a deterministic
+        # fallback used for sorting/equality in absence of GUIDs.
+        if self.guid and other.guid:
             return self.guid == other.guid
         else:
-            return self.__dict__ == other.__dict__  # Otherwise, look at dictionaries
+            return self.__dict__ == other.__dict__
 
     def __lt__(self, other):
         """Define less-than for purposes of sorting Message lists (sorted by date).

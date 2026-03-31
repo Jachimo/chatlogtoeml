@@ -19,6 +19,8 @@ from .parsers.imessage_common import segment_messages as _segment_messages
 from . import conversation
 
 
+# Separator used when constructing compound dedupe keys. Use a control
+# character unlikely to appear in normal text to avoid accidental collisions.
 ASCII_US = '\x1f'
 
 
@@ -39,7 +41,9 @@ def _normalize_text(s: Optional[str]) -> str:
 
 def _attachment_identity(att: conversation.Attachment) -> Tuple[str, str]:
     """Return (identity_type, idstring) where identity_type is 'hash' or 'meta'."""
-    # Prefer payload hash when available
+    # Prefer payload hash when available (strong identity). If payload is
+    # absent, synthesize a fingerprint from name/mime/size/origbasename so
+    # attachments without embedded data can still be matched heuristically.
     if getattr(att, 'data', None):
         h = hashlib.sha1()
         try:
@@ -62,6 +66,8 @@ def _escape_component(s: str) -> str:
 
 def _merge_orig_paths(existing_path: Optional[str], new_path: Optional[str]) -> str:
     """Merge attachment origin-path strings into a de-duplicated comma-separated list."""
+    # Keep a stable, de-duplicated list of original source paths per-attachment
+    # so callers can report where each attachment originally resided.
     existing_items = [p for p in (existing_path or '').split(',') if p]
     seen = set(existing_items)
     if new_path and new_path not in seen:
@@ -75,6 +81,9 @@ def _choose_source_db_basename(seg: List[Dict[str, Any]]) -> str:
     Uses message-count majority across source labels, with lexical tie-break to
     keep behavior deterministic.
     """
+    # Choose the basename that contributed the most messages to this merged
+    # segment. This is used downstream to generate a pseudo-domain for
+    # `From:`/`Message-ID` heuristics and should be deterministic.
     counts: Dict[str, int] = {}
     for rec in seg:
         label = (rec.get('provenance', {}).get('source_label', '') or '').strip()
@@ -87,14 +96,16 @@ def _choose_source_db_basename(seg: List[Dict[str, Any]]) -> str:
 
 
 def _make_key(rec: Dict[str, Any]) -> Tuple[str, str]:
-    # primary
+    # Primary key: when GUID exists, use it (stable across DBs).
     service = (rec.get('service') or '').lower()
     guid = rec.get('guid')
     if guid:
         pk = ASCII_US.join([service, _escape_component(str(guid))])
         return ('primary', pk)
 
-    # fallback key components
+    # Fallback key: combine service, chat_id, sender, second-granularity
+    # timestamp, normalized content, and attachment fingerprints. This makes
+    # a reasonably strong heuristic when GUIDs are absent.
     chat_id = (rec.get('chat_id') or '').lower()
     sender = (rec.get('sender') or '').lower()
     ts = rec.get('timestamp_utc')
@@ -115,7 +126,10 @@ def _make_key(rec: Dict[str, Any]) -> Tuple[str, str]:
 
 
 def _score_candidate(rec: Dict[str, Any]) -> Tuple[int, int, int]:
-    # Returns tuple (human_content_score, attachment_score, metadata_score)
+    # Returns tuple (human_content_score, attachment_score, metadata_score).
+    # Scoring is intentionally simple and deterministic: human content is
+    # heavily preferred, attachments add confidence, and metadata tiebreaks
+    # (GUIDs, reactions, realname) add smaller weight.
     human_score = 0
     text = _normalize_text(rec.get('text_norm') or '')
     html = _normalize_text(rec.get('html_norm') or '')
