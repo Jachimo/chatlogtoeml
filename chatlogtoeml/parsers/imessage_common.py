@@ -21,7 +21,28 @@ _ATTACH_READ_COUNTER = 0
 
 
 def _attachment_read_pacing() -> None:
-    """Optionally sleep between attachment reads to reduce I/O burst load."""
+    """Optionally sleep between attachment reads to reduce I/O burst load.
+
+    Reads two environment variables at call time (not at import time) so they
+    can be adjusted without restarting the process:
+
+    ``ATTACH_READ_PAUSE_MS``
+        Milliseconds to sleep after every N attachments.  0 (the default)
+        disables pacing entirely.  Values in the range 15-100 ms work well for
+        NAS-backed attachment directories.
+
+    ``ATTACH_READ_PAUSE_EVERY``
+        Apply the sleep only every N-th attachment (default 1 = every read).
+        Increase this to reduce overhead when attachments are small, e.g.
+        set to 5 to pause once per 5 reads.
+
+    These variables are read by Python and therefore take effect regardless of
+    how the process was started (wrapper script or direct invocation).
+    They are distinct from the OS-level ``NICE_LEVEL`` / ``USE_IONICE`` /
+    ``IONICE_CLASS`` / ``IONICE_LEVEL`` variables, which are only applied by
+    the shell wrappers (``ios_multi_convert.sh``, ``ios_convert.sh``) via the
+    ``nice``/``ionice`` prefix commands they construct.
+    """
     global _ATTACH_READ_COUNTER
     _ATTACH_READ_COUNTER += 1
     try:

@@ -15,7 +15,7 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from .parsers import apple_db as apple_db_parser
 from .parsers import addressbook as addressbook_parser
-from .parsers.imessage_common import norm_user
+from .parsers.imessage_common import norm_user, segment_messages as _segment_messages
 from . import conversation
 
 
@@ -169,6 +169,12 @@ def ingest_sources(source_specs: List[str], local_handle: Optional[str] = None,
                 embed_attachments=embed_attachments,
                 attachment_root=src.get('attachment_root'),
             ):
+                # Capture the local handle inferred by parse_file when it was not
+                # explicitly provided, so that set_local_account() can be called
+                # correctly during the post-dedup conversation rebuild.
+                if not local_handle and conv.localaccount:
+                    local_handle = conv.localaccount
+                    logging.info('Inferred local handle from %s: %s', src['db_path'], local_handle)
                 # Each conv is a conversation segment. Extract messages.
                 for msg in conv.messages:
                     if getattr(msg, 'type', 'message') != 'message':
@@ -260,35 +266,18 @@ def ingest_sources(source_specs: List[str], local_handle: Optional[str] = None,
     for cid, msgs in conv_map.items():
         # sort
         msgs.sort(key=lambda x: x.get('timestamp_utc') or datetime.datetime.fromtimestamp(0, datetime.timezone.utc))
-        # simple segmentation (idle gap)
-        segments: List[List[Dict[str, Any]]] = []
-        current: List[Dict[str, Any]] = []
-        last_dt = None
+        # Ensure each record has a 'date' string so segment_messages can parse it.
+        # (Records carry timestamp_utc as datetime objects; segment_messages expects 'date' strings.)
         for m in msgs:
-            dt = m.get('timestamp_utc') or datetime.datetime.fromtimestamp(0, datetime.timezone.utc)
-            if not current:
-                current.append(m)
-                last_dt = dt
-                continue
-            gap = (dt - last_dt).total_seconds()
-            if idle_hours and gap > idle_hours * 3600:
-                if len(current) >= min_messages:
-                    segments.append(current)
-                current = [m]
-                last_dt = dt
-                continue
-            if max_messages and len(current) >= max_messages:
-                if len(current) >= min_messages:
-                    segments.append(current)
-                current = [m]
-                last_dt = dt
-                continue
-            current.append(m)
-            last_dt = dt
-        if current and len(current) >= min_messages:
-            segments.append(current)
-
-        for seg in segments:
+            if not m.get('date'):
+                ts = m.get('timestamp_utc')
+                m['date'] = ts.isoformat() if isinstance(ts, datetime.datetime) else ''
+        # Use the shared segment_messages helper (from imessage_common) instead of a
+        # hand-rolled loop.  Benefits: correct short-segment coalescing (avoids silent
+        # message loss when dedup reduces a segment below min_messages) and proper
+        # max_days enforcement, which the previous custom loop lacked entirely.
+        for seg in _segment_messages(msgs, idle_hours=idle_hours, min_messages=min_messages,
+                                      max_messages=max_messages, max_days=max_days):
             conv = conversation.Conversation()
             conv.filenameuserid = cid
             conv.origfilename = ','.join(sorted({d.get('provenance', {}).get('source_label', '') for d in seg}))
@@ -337,6 +326,11 @@ def ingest_sources(source_specs: List[str], local_handle: Optional[str] = None,
             # Mark which participant is local so From: header is correct.
             if local_handle:
                 conv.set_local_account(local_handle)
+            # Mark all remaining participants as remote so conv_to_eml renders them
+            # in the correct colour (red) rather than the neutral black fallback.
+            for participant in conv.participants:
+                if participant.position != 'local':
+                    conv.set_remote_account(participant.userid)
 
             # Enrich participant display names from the address book.
             if ab_data and ab_data.handle_to_name:

@@ -26,6 +26,21 @@
  - New convenience wrapper: `ios_multi_convert.sh` supports multi-source runs with sane `nice`/`ionice`/attachment-pacing defaults and accepts `--address-book` prior to the `--` passthrough. `ios_convert.sh` remains available for single-source directory or DB runs.
  - Supporting tools: `adium_convert.sh`, `extras/fix_xml_close.sh`, `extras/failed_inspect.sh`, `extras/reprocess_list.sh`, `extras/emlToMbox.py`, and the `extras/parsers`/`extras/format-html` helpers remain in place.
 
+## I/O throttling and OS priority
+Throttling is split into two layers that operate independently:
+
+**OS-level scheduling — shell wrappers only**
+`ios_multi_convert.sh` and `ios_convert.sh` build a `nice`/`ionice` prefix command and exec Python under it. These env vars are consumed by the shell scripts and have **no effect** when `bin/db_to_eml` is invoked directly (a running Python process cannot retroactively change its scheduler class).
+- `NICE_LEVEL` — nice(1) increment, 0-19 (default 10)
+- `USE_IONICE` — set to `1` to enable ionice(1), `0` to disable (default 1)
+- `IONICE_CLASS` — scheduler class: 1=realtime, 2=best-effort, 3=idle (default 3)
+- `IONICE_LEVEL` — priority within class, 0-7 (default 7 = lowest)
+
+**Python-level I/O pacing — always active**
+Read at runtime by `chatlogtoeml.parsers.imessage_common._attachment_read_pacing`. Works regardless of how the process was launched.
+- `ATTACH_READ_PAUSE_MS` — sleep this many ms after reading an attachment (default 0 = disabled; 15-100 ms suits NAS I/O)
+- `ATTACH_READ_PAUSE_EVERY` — apply the sleep only every N-th read (default 1)
+
 ## Conventions and gotchas
 - Run CLI scripts from the repo root so `bin/chat_convert`/`bin/json_to_eml` can locate `converted.css` via the package import path.
 - Conversations must have at least two participants; the parsers add `UNKNOWN` placeholders if needed.

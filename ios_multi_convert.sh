@@ -1,11 +1,30 @@
 #!/usr/bin/env bash
 # Wrapper to run multi-source db_to_eml with conservative CPU/I/O defaults.
+#
 # Usage:
 #   ./ios_multi_convert.sh <outdir> <source1> [<source2> ...] [-- <extra db_to_eml args>]
 #
 # Each <source> may be a simple DB path or the extended form:
 #   <db_path>::<attachment_root>
 # which is forwarded directly to `--source` for `db_to_eml`.
+#
+# Environment variables
+# ---------------------
+# OS-level scheduling (applied HERE as a nice/ionice prefix; has no effect if
+# you call bin/db_to_eml directly because a Python process cannot change its
+# own scheduler class after start-up):
+#
+#   NICE_LEVEL            nice(1) increment (0-19; default 10)
+#   USE_IONICE            1 to enable ionice(1), 0 to skip (default 1)
+#   IONICE_CLASS          ionice scheduler class: 1=realtime 2=best-effort 3=idle (default 3)
+#   IONICE_LEVEL          priority within class (0-7; default 7 = lowest)
+#
+# Python-level I/O pacing (passed through to the Python process via env;
+# works regardless of whether you use this wrapper or call bin/db_to_eml
+# directly):
+#
+#   ATTACH_READ_PAUSE_MS      Sleep this many ms after reading an attachment (default 15)
+#   ATTACH_READ_PAUSE_EVERY   Apply sleep every N-th attachment (default 1)
 
 set -u
 

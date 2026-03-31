@@ -635,9 +635,27 @@ def _iter_message_rows(conn: sqlite3.Connection):
     except sqlite3.OperationalError:
         has_chat_join = False
 
+    # Prefer the string chat_identifier from the chat table over the local integer chat_id.
+    # The integer rowid is DB-local and not stable across multiple source DBs; the string
+    # chat_identifier (e.g. "+13215362964") is synced via iCloud and safe to use as a
+    # cross-DB grouping key.
+    has_chat_identifier = False
+    if has_chat_join:
+        try:
+            cur.execute("PRAGMA table_info(chat)")
+            _chat_cols = {r[1] for r in cur.fetchall()}
+            has_chat_identifier = 'chat_identifier' in _chat_cols
+        except Exception:
+            has_chat_identifier = False
+
     sql = f"SELECT {', '.join(select_cols)}"
     if has_chat_join:
-        sql += ", c.chat_id as chat_id FROM message m LEFT JOIN chat_message_join c ON m.ROWID = c.message_id"
+        sql += ", c.chat_id as chat_id"
+        if has_chat_identifier:
+            sql += ", ch.chat_identifier as chat_identifier"
+        sql += " FROM message m LEFT JOIN chat_message_join c ON m.ROWID = c.message_id"
+        if has_chat_identifier:
+            sql += " LEFT JOIN chat ch ON c.chat_id = ch.ROWID"
     else:
         sql += " FROM message m"
     if "date" in msg_cols:
@@ -796,11 +814,13 @@ def parse_file(
                     local_handle = addressbook.normalize_handle(account_value)
                     local_handle_keys.update(addressbook.handle_keys(local_handle))
 
-            # determine chat identifier
+            # determine chat identifier; prefer the string chat_identifier over the local integer
+            # chat_id because rowids are not stable across multiple source DBs.
             chat_id = None
             if 'chat_id' in row.keys():
                 chat_id = _row_get(row, 'chat_id')
-            chat_identifier = str(chat_id) if chat_id is not None else (sender or 'unknown')
+            chat_id_str = _row_get(row, 'chat_identifier') if 'chat_identifier' in row.keys() else None
+            chat_identifier = chat_id_str or (str(chat_id) if chat_id is not None else (sender or 'unknown'))
 
             # attachments
             attachments = _get_attachments_for_message(conn, rowid)

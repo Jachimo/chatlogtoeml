@@ -1,5 +1,45 @@
 #!/usr/bin/env python3
-"""Entry script for Apple DB to EML converter."""
+"""Entry script for Apple DB to EML converter.
+
+Environment variables
+---------------------
+Two distinct categories of throttling are available.  They are intentionally
+split between the OS shell layer and the Python layer:
+
+OS-level priority  (shell wrappers only)
+  These are read and applied by ios_multi_convert.sh / ios_convert.sh, which
+  construct a ``nice``/``ionice`` prefix command and exec Python under it.
+  Passing them when calling bin/db_to_eml directly has NO effect because a
+  Python process cannot change its own scheduler class or nice level after it
+  has already been started.
+
+    NICE_LEVEL            nice(1) increment, e.g. 15 (range 0-19, higher = lower priority)
+    USE_IONICE            set to 1 to enable ionice(1); 0 to disable
+    IONICE_CLASS          ionice class: 1=realtime, 2=best-effort, 3=idle (default 3)
+    IONICE_LEVEL          ionice level within class (0-7; default 7 = lowest)
+
+Python-level I/O pacing  (always active)
+  These are read at runtime by chatlogtoeml.parsers.imessage_common and work
+  no matter how the script is launched (wrapper or direct).
+
+    ATTACH_READ_PAUSE_MS      Sleep this many milliseconds after reading an attachment.
+                              0 (default) disables pacing entirely.
+    ATTACH_READ_PAUSE_EVERY   Apply the sleep only every N-th attachment (default 1).
+                              Raise to reduce overhead while still dampening burst I/O.
+
+Typical high-throughput NAS run via the wrapper::
+
+    NICE_LEVEL=15 USE_IONICE=1 IONICE_CLASS=3 IONICE_LEVEL=7 \\
+    ATTACH_READ_PAUSE_MS=60 ATTACH_READ_PAUSE_EVERY=1 \\
+    ./ios_multi_convert.sh /mnt/out src1.db::src1/Attachments src2.db::src2/Attachments \\
+        --address-book AddressBook.sqlitedb -- --clobber
+
+Direct call (pacing only, no OS priority change)::
+
+    ATTACH_READ_PAUSE_MS=60 ATTACH_READ_PAUSE_EVERY=1 \\
+    ./bin/db_to_eml --source src1.db::src1/Attachments --source src2.db::src2/Attachments \\
+        --address-book AddressBook.sqlitedb - /mnt/out --clobber
+"""
 
 import os
 import sys
