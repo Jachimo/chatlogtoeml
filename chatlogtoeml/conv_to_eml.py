@@ -412,7 +412,16 @@ def mimefromconv(conv: conversation.Conversation, no_background: bool = False) -
         line_parts = []
         if msg.type == 'message':  # formatting for most lines
             if msg.date:
-                line_parts.append('(' + msg.date.strftime(datefmt) + ')')
+                # Ensure timezone-aware display; fall back to UTC when naive
+                try:
+                    tzinfo = msg.date.tzinfo
+                except Exception:
+                    tzinfo = None
+                if tzinfo is None:
+                    display_dt = msg.date.replace(tzinfo=datetime.timezone.utc)
+                else:
+                    display_dt = msg.date
+                line_parts.append('(' + display_dt.strftime(datefmt + ' %Z') + ')')
             if msg.msgfrom:
                 if conv.get_realname_from_userid(msg.msgfrom):
                     line_parts.append(f'{conv.get_realname_from_userid(msg.msgfrom)} [{msg.msgfrom}]:')
@@ -422,7 +431,15 @@ def mimefromconv(conv: conversation.Conversation, no_background: bool = False) -
             text_lines.append(' '.join(line_parts))
         if msg.type == 'event':  # Don't put the msgfrom section on system messages, it looks dumb
             if msg.date:
-                line_parts.append('(' + msg.date.strftime(datefmt) + ')')
+                try:
+                    tzinfo = msg.date.tzinfo
+                except Exception:
+                    tzinfo = None
+                if tzinfo is None:
+                    display_dt = msg.date.replace(tzinfo=datetime.timezone.utc)
+                else:
+                    display_dt = msg.date
+                line_parts.append('(' + display_dt.strftime(datefmt + ' %Z') + ')')
             line_parts.append(msg.text)
             text_lines.append(' '.join(line_parts))
     mimetext = MIMEText('\n'.join(text_lines), 'plain')
@@ -445,8 +462,16 @@ def mimefromconv(conv: conversation.Conversation, no_background: bool = False) -
             line = []
             line.append('<p class="system_message">')
             if message.date:
+                try:
+                    tzinfo = message.date.tzinfo
+                except Exception:
+                    tzinfo = None
+                if tzinfo is None:
+                    display_dt = message.date.replace(tzinfo=datetime.timezone.utc)
+                else:
+                    display_dt = message.date
                 line.append('<span class="timestamp">')
-                line.append('(' + message.date.strftime(datefmt) + ')&nbsp;')
+                line.append('(' + display_dt.strftime(datefmt + ' %Z') + ')&nbsp;')
                 line.append('</span>')
             if message.html:
                 # If message exists as HTML, pass it through
