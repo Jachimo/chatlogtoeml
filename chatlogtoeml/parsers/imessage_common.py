@@ -152,9 +152,13 @@ def segment_messages(raw_msgs: List[dict], idle_hours: float = 8.0, min_messages
         parsed.append((raw_dt, raw))
     parsed.sort(key=lambda x: x[0])
 
+    # Build initial segments list, then post-process to merge short segments into
+    # adjacent segments (prefer previous) rather than dropping them. This keeps
+    # messages from being silently discarded when min_messages > 1.
     current = []
     last_dt = None
     start_dt = None
+    segments: List[List[tuple]] = []
     for dt, raw in parsed:
         if not current:
             current.append((dt, raw))
@@ -162,40 +166,74 @@ def segment_messages(raw_msgs: List[dict], idle_hours: float = 8.0, min_messages
             start_dt = dt
             continue
         gap = (dt - last_dt).total_seconds()
+        split = False
         # Split on idle gap.
         if idle_hours and gap > idle_hours * 3600:
-            if len(current) >= min_messages:
-                yield [item[1] for item in current]
-            else:
-                logging.debug('Skipping short segment of %d messages', len(current))
-            current = [(dt, raw)]
-            last_dt = dt
-            start_dt = dt
-            continue
+            split = True
         # Split on max_days.
-        if max_days and start_dt and (dt - start_dt).total_seconds() > max_days * 86400:
-            if len(current) >= min_messages:
-                yield [item[1] for item in current]
-            else:
-                logging.debug('Skipping short segment (max_days) of %d messages', len(current))
-            current = [(dt, raw)]
-            last_dt = dt
-            start_dt = dt
-            continue
+        if not split and max_days and start_dt and (dt - start_dt).total_seconds() > max_days * 86400:
+            split = True
         # Force split by max_messages.
-        if max_messages and len(current) >= max_messages:
-            if len(current) >= min_messages:
-                yield [item[1] for item in current]
-            else:
-                logging.debug('Skipping short segment (max_messages) of %d messages', len(current))
+        if not split and max_messages and len(current) >= max_messages:
+            split = True
+
+        if split:
+            segments.append(current)
             current = [(dt, raw)]
             last_dt = dt
             start_dt = dt
             continue
+
         current.append((dt, raw))
         last_dt = dt
-    if current and len(current) >= min_messages:
-        yield [item[1] for item in current]
+
+    if current:
+        segments.append(current)
+
+    # First, coalesce adjacent short segments so runs of 1-message segments
+    # are combined before attempting to merge into neighbors.
+    coalesced: List[List[tuple]] = []
+    i = 0
+    while i < len(segments):
+        seg = segments[i]
+        if len(seg) >= min_messages:
+            coalesced.append(seg)
+            i += 1
+            continue
+        # collect contiguous short segments
+        run = list(seg)
+        j = i + 1
+        while j < len(segments) and len(segments[j]) < min_messages:
+            run.extend(segments[j])
+            j += 1
+        coalesced.append(run)
+        i = j
+
+    # Now merge any remaining short segments into neighbors (prefer previous)
+    merged: List[List[tuple]] = []
+    for idx, seg in enumerate(coalesced):
+        if len(seg) >= min_messages:
+            merged.append(seg)
+            continue
+        # try merge into previous
+        if merged:
+            logging.debug('Merging short segment of %d into previous segment', len(seg))
+            merged[-1].extend(seg)
+        elif idx + 1 < len(coalesced):
+            logging.debug('Merging short segment of %d into next segment', len(seg))
+            # merge into next by prepending
+            coalesced[idx + 1] = seg + coalesced[idx + 1]
+        else:
+            # last remaining short segment with no neighbors: keep it
+            merged.append(seg)
+
+    # Yield final segments (filter empties)
+    for seg in merged:
+        if not seg:
+            continue
+        if len(seg) < min_messages:
+            logging.debug('Yielding short segment of %d messages after all merges', len(seg))
+        yield [item[1] for item in seg]
 
 
 def build_conversation_from_segment(segment: List[dict], chat_identifier: str,
