@@ -57,6 +57,7 @@ def apple_ts_to_dt(ts: Optional[int]) -> Optional[datetime.datetime]:
     # and scale to seconds since Apple epoch before converting to UTC.
     if ts is None:
         return None
+    v: float
     try:
         v = int(ts)
     except Exception:
@@ -228,11 +229,9 @@ def _decode_streamtyped_legacy(blob: bytes) -> Optional[str]:
     if not data:
         return None
     try:
-        s = data.decode('utf-8')
-        s = _drop_chars(s, 1)
+        s: Optional[str] = _drop_chars(data.decode('utf-8'), 1)
     except UnicodeDecodeError:
-        s = data.decode('utf-8', errors='replace')
-        s = _drop_chars(s, 3)
+        s = _drop_chars(data.decode('utf-8', errors='replace'), 3)
     if not s:
         return None
     s = _normalize_candidate_text(s)
@@ -277,7 +276,7 @@ def _decode_nskeyed_plist(blob: bytes) -> Optional[str]:
         return None
 
     # Generic extraction path first
-    generic = []
+    generic: List[Any] = []
     _extract_text_candidates(obj, generic)
     generic_best = _choose_best_text(generic)
 
@@ -295,7 +294,7 @@ def _decode_nskeyed_plist(blob: bytes) -> Optional[str]:
             if root_item is None and objects:
                 root_item = objects[1] if len(objects) > 1 else objects[0]
             resolved = _resolve_nskeyed_value(root_item, objects) if root_item is not None else None
-            candidates = []
+            candidates: List[Any] = []
             _extract_text_candidates(resolved, candidates)
             best = _choose_best_text(candidates)
             if best:

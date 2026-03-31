@@ -174,7 +174,7 @@ def ingest_sources(source_specs: List[str], local_handle: Optional[str] = None,
     selection and attachment merge rules.
     """
     # Resolve specs
-    sources = []
+    sources: List[Dict[str, Any]] = []
     for idx, s in enumerate(source_specs):
         spec = _parse_source_spec(s)
         dbp = spec.get('db_path')
@@ -193,7 +193,7 @@ def ingest_sources(source_specs: List[str], local_handle: Optional[str] = None,
 
     # Parse each DB into Conversation objects (per-chat segments). We will
     # iterate their messages and build normalized message records.
-    records = []
+    records: List[Dict[str, Any]] = []
     parse_failures = 0
     for src in sources:
         idx = src['source_index']
@@ -285,13 +285,13 @@ def ingest_sources(source_specs: List[str], local_handle: Optional[str] = None,
         # score candidates
         scored = []
         for it in candidates:
-            h, a, m = _score_candidate(it)
-            scored.append((h, a, m, it))
+            h, a, ms = _score_candidate(it)
+            scored.append((h, a, ms, it))
         # sort by score desc and deterministic tie-break
         scored.sort(key=lambda x: (-(x[0]), -(x[1]), -(x[2]), x[3].get('source_index'), str(x[3].get('guid') or '')))
         winner = scored[0][3]
         # merge attachments: union by identity
-        merged = {}
+        merged: Dict[str, Any] = {}
         for it in items:
             for a in it.get('attachments') or []:
                 pid = a.get('payload_hash') or a.get('fingerprint') or hashlib.sha1(str(a).encode('utf-8')).hexdigest()

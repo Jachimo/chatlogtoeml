@@ -10,7 +10,7 @@ Notes:
 
 import json
 import logging
-from typing import TYPE_CHECKING, Iterable, Optional
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional
 import os
 import tempfile
 import hashlib
@@ -39,7 +39,7 @@ def parse_file(path: str, local_handle: Optional[str] = None,
     """
     if not stream:
         with open(path, 'r') as f:
-            chats = {}
+            chats: Dict[str, List[dict]] = {}
             for ln in f:
                 ln = ln.strip()
                 if not ln:
@@ -68,8 +68,8 @@ def parse_file(path: str, local_handle: Optional[str] = None,
         base = tempfile.mkdtemp(prefix='imessage_shards_')
         cleanup_base = True
 
-    open_files = {}
-    chatfile_map = {}  # fpath -> chat_id
+    open_files: Dict[str, Any] = {}
+    chatfile_map: Dict[str, str] = {}  # fpath -> chat_id
     max_open = 512
 
     try:

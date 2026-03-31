@@ -3,7 +3,7 @@
 import logging
 import datetime
 import os
-import pytz
+import pytz  # type: ignore[import-untyped]
 from typing import TextIO
 import re
 

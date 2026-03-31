@@ -4,6 +4,7 @@ import argparse
 import logging
 import os
 import sys
+from typing import Dict, Optional
 
 from .. import conv_to_eml
 from .common import make_out_filename
@@ -11,7 +12,7 @@ from ..parsers import apple_db
 from ..multidb_ingest import ingest_sources
 
 
-def _converted_by_name(argv0: str = None) -> str:
+def _converted_by_name(argv0: Optional[str] = None) -> str:
     raw = argv0 if argv0 is not None else (sys.argv[0] if sys.argv else '')
     name = os.path.basename(raw or '').strip()
     if not name or name in ('-', '-c') or name.lower().startswith('python'):
@@ -55,10 +56,9 @@ def main(argv=None) -> int:
             logging.critical('Input DB not found: %s', infile)
             return 1
     if not os.path.isdir(outdir):
-        logging.critical('Output dir (%s) specified but not a directory.', outdir)
-        return 1
+        os.makedirs(outdir, exist_ok=True)
 
-    idx_counters = {}
+    idx_counters: Dict[str, int] = {}
 
     # PRODUCE a lazy stream of Conversation objects ('conversations')
     if sources:  # mult db -> process via multidb_ingest.ingest_sources
@@ -108,8 +108,9 @@ def main(argv=None) -> int:
             # Custom headers
             if conv.filenameuserid:
                 eml['X-Chat-Identifier'] = conv.filenameuserid
-            if getattr(conv, 'chat_guid', None):
-                eml['X-Chat-GUID'] = conv.chat_guid
+            _chat_guid = getattr(conv, 'chat_guid', None)
+            if _chat_guid:
+                eml['X-Chat-GUID'] = _chat_guid
             if hasattr(conv, 'startdate') and conv.startdate:
                 eml['X-Segment-Start'] = conv.startdate.isoformat()
             if conv.messages:

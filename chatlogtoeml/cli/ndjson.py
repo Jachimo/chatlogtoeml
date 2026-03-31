@@ -4,6 +4,7 @@ import argparse
 import logging
 import os
 import sys
+from typing import Dict
 
 from .. import conv_to_eml
 from .common import make_out_filename
@@ -40,8 +41,7 @@ def main(argv=None) -> int:
         logging.critical('Input file not found: %s', infile)
         return 1
     if not os.path.isdir(outdir):
-        logging.critical('Output dir (%s) specified but not a directory.', outdir)
-        return 1
+        os.makedirs(outdir, exist_ok=True)
 
     stream = args.stream
     try:
@@ -55,7 +55,7 @@ def main(argv=None) -> int:
         stream = True
         logging.info('Input file large (%d bytes) - enabling streaming shards', fsize)
 
-    idx_counters = {}
+    idx_counters: Dict[str, int] = {}
     # Wrap the top-level conversion loop so a single unexpected error results
     # in a non-zero exit; this mirrors the error-handling behavior used by the
     # Apple DB CLI and makes batch runs more robust.
@@ -94,8 +94,9 @@ def main(argv=None) -> int:
 
             if conv.filenameuserid:
                 eml['X-Chat-Identifier'] = conv.filenameuserid
-            if getattr(conv, 'chat_guid', None):
-                eml['X-Chat-GUID'] = conv.chat_guid
+            _chat_guid = getattr(conv, 'chat_guid', None)
+            if _chat_guid:
+                eml['X-Chat-GUID'] = _chat_guid
             if hasattr(conv, 'startdate') and conv.startdate:
                 eml['X-Segment-Start'] = conv.startdate.isoformat()
             if conv.messages:

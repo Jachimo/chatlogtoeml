@@ -9,9 +9,9 @@ import html as _html
 import logging
 import os
 import time
-from typing import Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-import dateutil.parser
+import dateutil.parser  # type: ignore[import-untyped]
 
 from .. import conversation
 from ..normalize import normalize_user
@@ -182,10 +182,10 @@ def segment_messages(raw_msgs: List[dict], idle_hours: float = 8.0, min_messages
     # Build initial segments list, then post-process to merge short segments into
     # adjacent segments (prefer previous) rather than dropping them. This keeps
     # messages from being silently discarded when min_messages > 1.
-    current = []
+    current: List[Tuple[Any, dict]] = []
     last_dt = None
     start_dt = None
-    segments: List[List[tuple]] = []
+    segments: List[List[Tuple[Any, dict]]] = []
     for dt, raw in parsed:
         if not current:
             current.append((dt, raw))
@@ -299,8 +299,8 @@ def build_conversation_from_segment(segment: List[dict], chat_identifier: str,
     if local_handle:
         conv.set_local_account(local_handle)
 
-    messages_by_guid = {}
-    reactions = {}
+    messages_by_guid: Dict[str, conversation.Message] = {}
+    reactions: Dict[Optional[str], List[dict]] = {}
 
     for msgobj in segment:
         associated_guid = msgobj.get('associated_message_guid')

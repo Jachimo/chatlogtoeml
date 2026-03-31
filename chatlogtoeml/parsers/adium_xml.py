@@ -4,8 +4,9 @@
 import sys
 import os
 import logging
-import dateutil.parser
+import dateutil.parser  # type: ignore[import-untyped]
 import xml.dom.minidom
+import xml.parsers.expat
 import re
 from typing import BinaryIO
 
@@ -25,7 +26,7 @@ def toconv(infile: BinaryIO) -> conversation.Conversation:
         instring = re.sub(r'[\x00-\x08\x0B-\x1F]', '?', infile.read().decode('utf-8-sig', errors='replace'))
         dom = xml.dom.minidom.parseString(instring)
 
-    if dom.firstChild.nodeName != 'chat':  # Do some basic sanity-checking on input
+    if dom.firstChild.nodeName != 'chat':  # type: ignore[union-attr]  # Do some basic sanity-checking on input
         logging.critical(os.path.basename(infile.name) + ' does not appear to contain <chat> element!')
         raise ValueError('Malformed or invalid input file')
 
@@ -53,51 +54,51 @@ def toconv(infile: BinaryIO) -> conversation.Conversation:
     # Special handling for Facebook Chat usernames, which are stored in directory structure in an odd way
     if '@chat.facebook.com' in conv.remoteaccount:
         rawfileid = conv.remoteaccount
-        conv.remoteaccount = re.match(r"^-([0-9]*)@chat\.facebook\.com$", rawfileid).group(1)
+        conv.remoteaccount = re.match(r"^-([0-9]*)@chat\.facebook\.com$", rawfileid).group(1)  # type: ignore[union-attr]
     conv.filenameuserid = conv.origfilename.split(' (')[0]
     if '@chat.facebook.com' in conv.filenameuserid:
         rawfilenameuserid = conv.filenameuserid
-        conv.filenameuserid = re.match(r"^-([0-9]*)@chat\.facebook\.com$", rawfilenameuserid).group(1)
+        conv.filenameuserid = re.match(r"^-([0-9]*)@chat\.facebook\.com$", rawfilenameuserid).group(1)  # type: ignore[union-attr]
 
-    chat = dom.firstChild  # root element should always be <chat>
-    conv.service = chat.getAttribute('service').strip()  # set the service (AIM, MSN, etc.)
+    chat = dom.firstChild  # type: ignore[union-attr]  # root element should always be <chat>
+    conv.service = chat.getAttribute('service').strip()  # type: ignore[union-attr]  # set the service (AIM, MSN, etc.)
     if not conv.remoteaccount:
         logging.debug('Could not determine local account from input path; setting from XML')
-        conv.set_remote_account(chat.getAttribute('account').strip().lower())  # set remote account from XML
+        conv.set_remote_account(chat.getAttribute('account').strip().lower())  # type: ignore[union-attr]  # set remote account from XML
 
     logging.debug('IM service is: ' + conv.service)
     logging.debug('Local account is: ' + conv.localaccount)
     logging.debug('Remote account is: ' + conv.remoteaccount)
 
-    for e in chat.childNodes:
+    for e in chat.childNodes:  # type: ignore[union-attr]
         if (e.nodeName == 'event') or (e.nodeName == 'status'):  # Handle <event... /> and <status... />
             msg = conversation.Message('event')
-            msg.date = dateutil.parser.parse(e.getAttribute('time'))
-            msg.msgfrom = e.getAttribute('sender')
-            if e.getAttribute('type') == 'windowOpened':
-                msg.text = 'Window opened by ' + e.getAttribute('sender')
-            if e.getAttribute('type') == 'windowClosed':
-                msg.text = 'Window closed by ' + e.getAttribute('sender')
-            if e.getAttribute('type') in ['offline', 'online', 'idle', 'available']:
-                msg.text = 'User ' + e.getAttribute('sender') + ' is now ' + e.getAttribute('type') + '.'
+            msg.date = dateutil.parser.parse(e.getAttribute('time'))  # type: ignore[union-attr]
+            msg.msgfrom = e.getAttribute('sender')  # type: ignore[union-attr]
+            if e.getAttribute('type') == 'windowOpened':  # type: ignore[union-attr]
+                msg.text = 'Window opened by ' + e.getAttribute('sender')  # type: ignore[union-attr]
+            if e.getAttribute('type') == 'windowClosed':  # type: ignore[union-attr]
+                msg.text = 'Window closed by ' + e.getAttribute('sender')  # type: ignore[union-attr]
+            if e.getAttribute('type') in ['offline', 'online', 'idle', 'available']:  # type: ignore[union-attr]
+                msg.text = 'User ' + e.getAttribute('sender') + ' is now ' + e.getAttribute('type') + '.'  # type: ignore[union-attr]
             conv.add_message(msg)
         elif e.nodeName == 'message':  # Handle <message>
             msg = conversation.Message('message')
-            msg.date = dateutil.parser.parse(e.getAttribute('time'))
-            msg.msgfrom = e.getAttribute('sender')
+            msg.date = dateutil.parser.parse(e.getAttribute('time'))  # type: ignore[union-attr]
+            msg.msgfrom = e.getAttribute('sender')  # type: ignore[union-attr]
             conv.add_participant(msg.msgfrom.lower())
-            if e.hasAttribute('alias'):  # Facebook logs have an 'alias' attribute containing real name
-                logging.debug(f'Alias {e.getAttribute("alias")} found for user id {msg.msgfrom}')
-                conv.add_realname_to_userid(msg.msgfrom, e.getAttribute('alias'))
+            if e.hasAttribute('alias'):  # type: ignore[union-attr]  # Facebook logs have an 'alias' attribute containing real name
+                logging.debug(f'Alias {e.getAttribute("alias")} found for user id {msg.msgfrom}')  # type: ignore[union-attr]
+                conv.add_realname_to_userid(msg.msgfrom, e.getAttribute('alias'))  # type: ignore[union-attr]
             msg.text = get_inner_text(e)
             logging.debug('Message text is: ' + msg.text)
-            if e.firstChild.nodeName == 'div':
+            if e.firstChild.nodeName == 'div':  # type: ignore[union-attr]
                 try:
-                    msg.html = e.firstChild.firstChild.toxml()  # strip outermost <div>
+                    msg.html = e.firstChild.firstChild.toxml()  # type: ignore[union-attr]  # strip outermost <div>
                 except AttributeError:  # usually this is caused by text directly inside the <div> without a <span>
-                    msg.html = e.firstChild.toxml()
+                    msg.html = e.firstChild.toxml()  # type: ignore[union-attr]
             else:
-                msg.html = e.firstChild.toxml()
+                msg.html = e.firstChild.toxml()  # type: ignore[union-attr]
             logging.debug('Message HTML is: ' + msg.html)
             conv.add_message(msg)
             logging.debug('End of message processing')
@@ -135,6 +136,6 @@ def get_inner_text(node):
 
 if __name__ == "__main__":  # for test/debug purposes
     logging.basicConfig(level=logging.DEBUG)
-    with open(sys.argv[1]) as fo:
+    with open(sys.argv[1], 'rb') as fo:
         conv = toconv(fo)
         print(conv)

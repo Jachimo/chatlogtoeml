@@ -34,9 +34,7 @@ def main(argv=None) -> int:
     if os.path.splitext(infile)[-1] not in ['.chatlog', '.xml', '.AdiumHTMLLog', '.html']:
         logging.critical("Input file suffix not one of the supported types.")
         return 1
-    if not os.path.isdir(args.outdirname):
-        logging.critical("Output dir (%s) specified but not a directory.", args.outdirname)
-        return 1
+    os.makedirs(args.outdirname, exist_ok=True)
 
     if os.path.isdir(infile) and os.path.splitext(infile)[-1] == '.chatlog':
         logging.debug('Mac OS .chatlog bundle detected: %s', os.path.basename(infile))

@@ -278,8 +278,8 @@ def _make_message_index_part(conv: conversation.Conversation):
     payload = {
         'schema_version': 1,
         'chat_identifier': getattr(conv, 'filenameuserid', '') or '',
-        'segment_start': conv.startdate.isoformat() if getattr(conv, 'startdate', None) else None,
-        'segment_end': conv.enddate.isoformat() if getattr(conv, 'enddate', None) else None,
+        'segment_start': conv.startdate.isoformat() if conv.startdate is not None else None,
+        'segment_end': conv.enddate.isoformat() if conv.enddate is not None else None,
         'message_count': len(conv.messages),
         'guid_count': len(guids),
         'guid_sha256': digest,
