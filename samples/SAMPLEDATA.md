@@ -92,16 +92,16 @@ Use the `db_to_eml` CLI to convert the DB fixtures to `.eml` files. Examples:
 
 ```bash
 mkdir -p samples/output/db_to_eml_macos
-./bin/db_to_eml samples/macos/chat.db samples/output/db_to_eml_macos --embed-attachments --clobber --debug
+./bin/db_to_eml samples/macos/chat.db samples/output/db_to_eml_macos --clobber --debug
 
 mkdir -p samples/output/db_to_eml_ios
-./bin/db_to_eml samples/ios/sms.db samples/output/db_to_eml_ios --embed-attachments --clobber --debug
+./bin/db_to_eml samples/ios/sms.db samples/output/db_to_eml_ios --clobber --debug
 
 # Optional contact name enrichment (real-world Address Book DB)
 ./bin/db_to_eml /path/to/real/sms.db /tmp/ios_real_eml \
   --address-book /path/to/AddressBook.sqlitedb \
   --attachment-root /path/to/real/Attachments \
-  --embed-attachments --clobber
+  --clobber
 ```
 
 Behavior and attachment resolution:
@@ -110,9 +110,10 @@ Behavior and attachment resolution:
   resolve the referenced files on disk. If attachments are stored somewhere
   other than relative to the DB, supply `--attachment-root <dir>` to tell the
   parser where to look.
-- Use `--embed-attachments` to include binary payloads in the resulting EMLs.
-  When embedding is not possible, the converter will add an `X-Original-Attachment-Path`
-  header to the EML to record the source path.
+- Attachments are embedded by default. Use `--no-attach` to disable embedding
+  and preserve only path metadata. When embedding is not possible, the
+  converter will add an `X-Original-Attachment-Path` header to the EML to
+  record the source path.
 - Use `--address-book` to resolve phone/email handles into real names from
   `AddressBook.sqlitedb`. This also populates the local owner name (when
   `ABStore.MeIdentifier` is available), so `From:` shows a human name instead of

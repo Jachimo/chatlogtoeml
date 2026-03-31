@@ -23,7 +23,7 @@ Design decisions and conventions
 - Participant normalization: accept strings or dicts. Extract canonical id from keys in order: id, identifier, handle, address, username, phone, value. Fallback to the first non-empty dict value, or stringified representation. Always add participants to Conversation as strings.
 - Reactions: group reactions by type and actors; render as inline HTML badges (emoji×count) where emoji mapping exists and fallback to textual label. If the reaction references a message GUID in the same segment, append HTML/text to the target message; otherwise emit a system event message.
 - Streaming: shard large NDJSON into per-chat temp files (safe filenames using hash). Process shards sequentially to control memory usage. Default auto-stream threshold: 50 MiB (tunable).
-- CLI flags (`bin/json_to_eml`): --stream, --stream-tempdir, --embed-attachments, --local-handle, --no-background, --clobber, --debug.
+-- CLI flags (`bin/json_to_eml`): --stream, --stream-tempdir, --no-attach, --local-handle, --no-background, --clobber, --debug.
 - EML generation: conv_to_eml.mimefromconv(conv, no_background=False) is the stable API. It loads converted.css from module directory so converters can be run from other CWDs.
 
 Implementation notes / code pointers
@@ -48,7 +48,7 @@ Testing
 - Run tests with: python3 -m unittest discover -s tests -v
 - For local validation with exports you don’t commit:
   1. Copy NDJSON files into a temporary local folder (e.g., samples/ndjson/realworld/<export>/ or a path outside the repo). Do NOT add to git.
-  2. Run: python3 bin/json_to_eml <ndjson-file> <outdir> --stream --local-handle <your-handle> --embed-attachments (optional)
+  2. Run: python3 bin/json_to_eml <ndjson-file> <outdir> --stream --local-handle <your-handle>
   3. Inspect resulting .eml files in the outdir. Use an MUA or 'less' to check headers, HTML rendering, attachments, and reactions.
 
 Edge cases and policy decisions

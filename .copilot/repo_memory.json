@@ -23,9 +23,9 @@
     },
     {
       "subject": "ndjson_cli",
-      "fact": "bin/json_to_eml is the NDJSON CLI; supports --stream, --stream-tempdir, --embed-attachments, --local-handle, --no-background, --clobber, and segmentation options (idle-hours/max-messages/max-days).",
+      "fact": "bin/json_to_eml is the NDJSON CLI; supports --stream, --stream-tempdir, --no-attach, --local-handle, --no-background, --clobber, and segmentation options (idle-hours/max-messages/max-days).",
       "citations": "README.md:15-29",
-      "reason": "Explains how to run the NDJSON converter and available flags for streaming and attachment embedding."
+      "reason": "Explains how to run the NDJSON converter and available flags for streaming and disabling attachment embedding."
     },
     {
       "subject": "date_policy",

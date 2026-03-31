@@ -63,7 +63,7 @@ def apple_ts_to_dt(v):
 - The DB typically references attachment records and physical files stored in a separate Attachments directory (paths vary by export method / device / iCloud). Parser must:
   - read attachment metadata from DB (filename, mimetype, stored path or GUID)
   - attempt to resolve the physical path relative to the DB (or accept a base attachments directory passed via CLI)
-  - when `--embed-attachments` is set, read local file bytes and set `Attachment.data`; otherwise preserve metadata and set `Attachment.orig_path`.
+  - attachments are embedded by default; when `--no-attach` is specified read local file bytes are not included and the parser will preserve metadata in `Attachment.orig_path` instead.
 - If attachments are missing, record an X- header or log warning (already handled by conv_to_eml changes).
 
 ---
@@ -152,7 +152,7 @@ Status: Prototype implemented in this branch/repository.
     - NSKeyedArchiver/binary plist decoding via `NSKeyedUnArchiver` (+ plistlib fallback)
     - legacy `streamtyped` marker fallback for unparsed attributedBody payloads
   - Produces message dicts compatible with `imessage_json.build_conversation_from_segment()` and sets `conv.source_db_basename` for pseudo-domain derivation.
-- Added CLI wrapper `bin/db_to_eml` that calls the parser and `conv_to_eml.mimefromconv()`; supports `--embed-attachments`, `--attachment-root`, `--local-handle`, `--no-background`, and `--clobber`.
+-- Added CLI wrapper `bin/db_to_eml` that calls the parser and `conv_to_eml.mimefromconv()`; attachments are embedded by default and `--no-attach` can be used to skip embedding. The CLI also supports `--attachment-root`, `--local-handle`, `--no-background`, and `--clobber`.
 - Sample fixture generators added: `tools/generate_macos_chatdb_fixture.py`, `tools/generate_ios_smsdb_fixture.py`, and `tools/generate_blob_case_fixtures.py` (produce DBs and attachments under `samples/`).
 - Verification: ran end-to-end conversions; attachment embedding now works (embedded payloads verified by SHA256 match).
 

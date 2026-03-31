@@ -361,7 +361,7 @@ subprocess.run([
     output_dir,
     "--attachment-root", os.path.join(work_dir, "Attachments"),
     "--local-handle", local_handle,   # from CLI, optional
-    "--embed-attachments",            # optional, configurable
+    # attachments are embedded by default; use "--no-attach" to skip embedding
     "--clobber",                      # for periodic re-runs
 ], check=True)
 ```
@@ -390,7 +390,7 @@ Options:
   --no-backup           Skip idevicebackup2; re-use the most recent backup in --backup-root
   --no-convert          Extract only; do not invoke db_to_eml
   --local-handle HANDLE Phone number or email to use as From: address in EML output
-  --embed-attachments   Embed attachment payloads in EML (may be large)
+  --no-attach           Do not embed attachment payloads in EML; preserve path metadata instead
   --clobber             Overwrite existing EML files in output_dir
   --debug               Enable verbose logging throughout
   -h, --help            Show this message

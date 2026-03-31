@@ -158,7 +158,7 @@ jobs:
         run: |
           mkdir -p /tmp/smoke_ios
           uv run bin/db_to_eml samples/ios/sms.db /tmp/smoke_ios \
-            --embed-attachments --clobber
+            --clobber
           count=$(ls /tmp/smoke_ios/*.eml 2>/dev/null | wc -l)
           echo "iOS smoke: $count .eml file(s) produced"
           [ "$count" -gt 0 ] || (echo "ERROR: no .eml output" && exit 1)
@@ -167,7 +167,7 @@ jobs:
         run: |
           mkdir -p /tmp/smoke_macos
           uv run bin/db_to_eml samples/macos/chat.db /tmp/smoke_macos \
-            --embed-attachments --clobber
+            --clobber
           count=$(ls /tmp/smoke_macos/*.eml 2>/dev/null | wc -l)
           echo "macOS smoke: $count .eml file(s) produced"
           [ "$count" -gt 0 ] || (echo "ERROR: no .eml output" && exit 1)
@@ -367,7 +367,7 @@ uv run python -m unittest discover -v
 
 # 5. Quick smoke (ios only)
 mkdir -p /tmp/smoke_ios
-uv run bin/db_to_eml samples/ios/sms.db /tmp/smoke_ios --embed-attachments --clobber
+uv run bin/db_to_eml samples/ios/sms.db /tmp/smoke_ios --clobber
 ls /tmp/smoke_ios/*.eml
 
 # 6. Build

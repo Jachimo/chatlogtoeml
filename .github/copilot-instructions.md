@@ -3,11 +3,11 @@
 ## Build / Run / Test
 - Requires Python >=3.9 with dependencies installed: `pip install pytz python-dateutil`.
 - Convert a single Adium/XML/HTML log: `./bin/chat_convert path/to/log.chatlog [output_dir] [--clobber] [--attach] [--no-background] [--debug]`.
-- Convert an imessage-exporter NDJSON export: `./bin/json_to_eml <input.ndjson> <outdir> [--local-handle <handle>] [--idle-hours <float>] [--min-messages <int>] [--max-messages <int>] [--max-days <int>] [--stream] [--stream-tempdir <dir>] [--embed-attachments] [--no-background] [--clobber] [--debug]`.
+-- Convert an imessage-exporter NDJSON export: `./bin/json_to_eml <input.ndjson> <outdir> [--local-handle <handle>] [--idle-hours <float>] [--min-messages <int>] [--max-messages <int>] [--max-days <int>] [--stream] [--stream-tempdir <dir>] [--no-attach] [--no-background] [--clobber] [--debug]`.
 - Bulk convert a directory: `./adium_convert.sh "<log_root>" "<output_dir>"` (writes `converted_YYYY-MM-DD.log` and `failed_YYYY-MM-DD.log`).
 - Merge `.eml` outputs into an mbox: `python extras/emlToMbox.py <eml_dir> <output.mbox>`.
 - No extra linters are defined; run `python3 -m unittest discover -v` to sanity check.
- - Convert an imessage-exporter NDJSON export: `./bin/json_to_eml <input.ndjson> <outdir> [--local-handle <handle>] [--idle-hours <float>] [--min-messages <int>] [--max-messages <int>] [--max-days <int>] [--stream] [--stream-tempdir <dir>] [--embed-attachments] [--no-background] [--clobber] [--debug]`.
+ - Convert an imessage-exporter NDJSON export: `./bin/json_to_eml <input.ndjson> <outdir> [--local-handle <handle>] [--idle-hours <float>] [--min-messages <int>] [--max-messages <int>] [--max-days <int>] [--stream] [--stream-tempdir <dir>] [--no-attach] [--no-background] [--clobber] [--debug]`.
  - Convert Apple Messages SQLite DBs (sms.db / chat.db): `./bin/db_to_eml <infile> <outdir> [--local-handle <handle>] [--address-book <AddressBook.sqlitedb>] [--attachment-root <dir>] [--idle-hours <float>] [--min-messages <int>] [--max-messages <int>] [--max-days <int>] [--no-attach] [--no-background] [--clobber] [--debug]`.
    - Multi-source mode: pass `--source <db_path>[::attachment_root]` multiple times and use `-` as the positional `infile` placeholder, followed by the `outdir` position. Example:
      `./bin/db_to_eml --source /path/a/sms.db::/path/a/Attachments --source /path/b/chat.db::/path/b/Attachments - /path/to/out --clobber`
@@ -61,7 +61,7 @@ Read at runtime by `chatlogtoeml.parsers.imessage_common._attachment_read_pacing
   - `--min-messages`: skip segments with fewer than this many messages (default 2).
   - `--max-messages` / `--max-days`: force splits after reaching a size or duration limit.
   - `--stream`: shard NDJSON to per-chat temporary files to bound memory usage (auto-enabled for files >50MiB). `--stream-tempdir` overrides the temp directory.
-  - `--embed-attachments`: attempts to read local attachment payloads and embed them (warns if not accessible).
+  - `--no-attach`: disable embedding of attachment payloads; record original paths instead.
   - `--no-background`: strips inline background styling from generated HTML.
   - `--clobber`: overwrite existing `.eml` outputs.
   - `--debug`: verbose logging.
