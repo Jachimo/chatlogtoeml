@@ -36,39 +36,39 @@ usage() {
   echo "Usage: $0 <sms_root_or_db> <outdir> [AddressBook.sqlitedb] [-- <extra db_to_eml args>]"
 }
 
-# Fast-path help/usage.
+# Fast-path help/usage
 if [[ ${1:-} == "-h" || ${1:-} == "--help" ]]; then
   usage
   exit 0
 fi
 
-# Require source + output root.
+# Require source + output root
 if [[ $# -lt 2 ]]; then
   usage
   exit 1
 fi
 
-# Peel off required args first.
+# Peel off required args first
 SOURCE_ARG=$1
 OUTDIR=$2
 shift 2
 
-# Optional AddressBook path in arg3.
+# Optional AddressBook path in arg3
 ADDRESSBOOK=""
 if [[ $# -gt 0 && ${1:-} != "--" ]]; then
   ADDRESSBOOK=$1
   shift
 fi
 
-# Optional delimiter before passthrough args.
+# Optional delimiter before passthrough args
 if [[ ${1:-} == "--" ]]; then
   shift
 fi
 
-# Remaining args pass straight to db_to_eml.
+# Remaining args pass straight to db_to_eml
 EXTRA_ARGS=("$@")
 
-# Run from repo root so ./bin/db_to_eml resolves.
+# Run from repo root so ./bin/db_to_eml resolves
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 cd "$SCRIPT_DIR" || exit 1
 
@@ -85,7 +85,8 @@ if [[ -n "$ADDRESSBOOK" && ! -f "$ADDRESSBOOK" ]]; then
   exit 1
 fi
 
-# Resolve DB inputs from file or directory.
+# Resolve DB inputs from file or directory
+# TODO: Ugly.
 DB_LIST=()
 if [[ -f "$SOURCE_ARG" ]]; then
   DB_LIST+=("$SOURCE_ARG")
@@ -111,13 +112,14 @@ if [[ ${#DB_LIST[@]} -eq 0 ]]; then
   exit 1
 fi
 
-# Lower CPU scheduling priority unless overridden.
+# Lower CPU scheduling priority unless overridden
+# Defaults (can be tuned by environment); prefer best-effort so -n is honored
 NICE_LEVEL=${NICE_LEVEL:-10}
-# Lower I/O scheduling priority unless disabled.
+# Lower I/O scheduling priority unless disabled
 USE_IONICE=${USE_IONICE:-1}
-IONICE_CLASS=${IONICE_CLASS:-3}
+IONICE_CLASS=${IONICE_CLASS:-2}
 IONICE_LEVEL=${IONICE_LEVEL:-7}
-# Pace attachment reads in parser (milliseconds, every N attachments).
+# Pace attachment reads in parser (ms, every N attachments)
 ATTACH_READ_PAUSE_MS=${ATTACH_READ_PAUSE_MS:-15}
 ATTACH_READ_PAUSE_EVERY=${ATTACH_READ_PAUSE_EVERY:-1}
 
@@ -132,10 +134,10 @@ echo "Attachment pacing: ${ATTACH_READ_PAUSE_MS}ms every ${ATTACH_READ_PAUSE_EVE
 
 for DB_PATH in "${DB_LIST[@]}"; do
   DB_DIR=$(dirname "$DB_PATH")
-  # iOS/macOS exports usually keep attachments beside the DB.
+  # iOS/macOS exports usually keep attachments beside the DB
   ATTACH_ROOT="$DB_DIR/Attachments"
 
-  # Multi-DB runs get per-DB output subdirs.
+  # Multi-DB runs get per-DB output subdirs
   TARGET_OUTDIR="$OUTDIR"
   if [[ ${#DB_LIST[@]} -gt 1 ]]; then
     SAFE_DB_NAME=$(echo "$DB_PATH" | sed 's#[/ ]#_#g; s#[^A-Za-z0-9._-]#_#g')
@@ -143,7 +145,7 @@ for DB_PATH in "${DB_LIST[@]}"; do
     mkdir -p "$TARGET_OUTDIR"
   fi
 
-  # Build command as an array to preserve quoting.
+  # Build command as an array to preserve whitespace/quoting
   CMD=(env "ATTACH_READ_PAUSE_MS=$ATTACH_READ_PAUSE_MS" "ATTACH_READ_PAUSE_EVERY=$ATTACH_READ_PAUSE_EVERY")
   if [[ "$USE_IONICE" != "0" ]] && command -v ionice >/dev/null 2>&1; then
     CMD+=(ionice -c "$IONICE_CLASS" -n "$IONICE_LEVEL")
@@ -159,7 +161,7 @@ for DB_PATH in "${DB_LIST[@]}"; do
     echo "Warning: attachment root not found for $DB_PATH ($ATTACH_ROOT); continuing without --attachment-root" | tee -a "$OUTDIR/$LOGFILE"
   fi
 
-  # Forward any caller-provided db_to_eml options.
+  # Forward any caller-provided db_to_eml options
   CMD+=("${EXTRA_ARGS[@]}")
 
   echo "Converting DB: $DB_PATH" | tee -a "$OUTDIR/$LOGFILE"

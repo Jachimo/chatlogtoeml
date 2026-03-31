@@ -91,7 +91,8 @@ mkdir -p "$OUTDIR"
 # Defaults (can be overridden in environment)
 NICE_LEVEL=${NICE_LEVEL:-10}
 USE_IONICE=${USE_IONICE:-1}
-IONICE_CLASS=${IONICE_CLASS:-3}
+# Prefer best-effort by default so the kernel honors the -n level.
+IONICE_CLASS=${IONICE_CLASS:-2}
 IONICE_LEVEL=${IONICE_LEVEL:-7}
 ATTACH_READ_PAUSE_MS=${ATTACH_READ_PAUSE_MS:-15}
 ATTACH_READ_PAUSE_EVERY=${ATTACH_READ_PAUSE_EVERY:-1}

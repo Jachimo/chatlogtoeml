@@ -34,6 +34,7 @@ Throttling is split into two layers that operate independently:
 - `NICE_LEVEL` — nice(1) increment, 0-19 (default 10)
 - `USE_IONICE` — set to `1` to enable ionice(1), `0` to disable (default 1)
 - `IONICE_CLASS` — scheduler class: 1=realtime, 2=best-effort, 3=idle (default 3)
+ - `IONICE_CLASS` — scheduler class: 1=realtime, 2=best-effort, 3=idle (default 2)
 - `IONICE_LEVEL` — priority within class, 0-7 (default 7 = lowest)
 
 **Python-level I/O pacing — always active**
