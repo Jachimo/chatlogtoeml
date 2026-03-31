@@ -92,6 +92,23 @@ class TestAppleDBScaffold(unittest.TestCase):
         out3 = apple_db_module._decode_message_text(None, b"", blob)
         self.assertEqual(out3, "from_payload")
 
+    def test_resolve_attachment_path_maps_messages_tilde_to_db_attachments(self):
+        with tempfile.TemporaryDirectory() as td:
+            tdp = Path(td)
+            db_dir = tdp / 'Messages'
+            db_dir.mkdir(parents=True, exist_ok=True)
+            db_path = db_dir / 'chat.db'
+            db_path.write_bytes(b'')
+
+            rel = Path('07/07/97EBFF21-E15E-41AD-96DD-AEA9F7F5DEBE/IMG_0643.JPG')
+            expected = db_dir / 'Attachments' / rel
+            expected.parent.mkdir(parents=True, exist_ok=True)
+            expected.write_bytes(b'test')
+
+            raw = '~/Library/Messages/Attachments/' + str(rel)
+            resolved = apple_db_module._resolve_attachment_path(raw, str(db_path), None)
+            self.assertEqual(Path(resolved), expected)
+
     def test_blob_case_fixture_decode_matrix(self):
         # Fixture generator writes expected text for each GUID into JSON.
         root = Path(__file__).resolve().parents[1]

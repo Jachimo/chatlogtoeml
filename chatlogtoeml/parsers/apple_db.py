@@ -550,14 +550,25 @@ def _resolve_attachment_path(raw_path: Optional[str], db_path: str, attachment_r
     # 1) explicit absolute path
     if os.path.isabs(p):
         candidates.append(p)
+        # Remap legacy macOS absolute paths into extracted roots when possible.
+        for marker in ('/Library/SMS/Attachments/', '/Library/Messages/Attachments/'):
+            pos = p.find(marker)
+            if pos >= 0:
+                rel = p[pos + len(marker):].lstrip('/\\')
+                if root_abs:
+                    candidates.append(os.path.join(root_abs, rel))
+                candidates.append(os.path.join(db_dir, 'Attachments', rel))
+                break
 
     # 2) tilde-style Apple paths from backups (do not expand to current HOME; remap to provided root)
-    if p.startswith('~/Library/SMS/Attachments/'):
-        rel = p[len('~/Library/SMS/Attachments/'):].lstrip('/\\')
-        if root_abs:
-            candidates.append(os.path.join(root_abs, rel))
-        # fallback under db_dir in case attachments live alongside db copy
-        candidates.append(os.path.join(db_dir, 'Attachments', rel))
+    for marker in ('~/Library/SMS/Attachments/', '~/Library/Messages/Attachments/'):
+        if p.startswith(marker):
+            rel = p[len(marker):].lstrip('/\\')
+            if root_abs:
+                candidates.append(os.path.join(root_abs, rel))
+            # fallback under db_dir in case attachments live alongside db copy
+            candidates.append(os.path.join(db_dir, 'Attachments', rel))
+            break
 
     # 3) relative paths
     if not os.path.isabs(p) and not p.startswith('~/'):
