@@ -210,6 +210,42 @@ class TestIngestSourcesAddressBook(unittest.TestCase):
                     'At least one participant should be marked local'
                 )
 
+    def test_remote_participant_preserved_for_outgoing_only_segment(self):
+        """Outgoing-only segments must still carry remote participants for name enrichment."""
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = os.path.join(tmp, 'sms.db')
+            conn = sqlite3.connect(db_path)
+            conn.execute("CREATE TABLE handle (ROWID INTEGER PRIMARY KEY, id TEXT)")
+            conn.execute("INSERT INTO handle VALUES (1, ?)", ('+13215362964',))
+            conn.execute(
+                """CREATE TABLE message (
+                   ROWID INTEGER PRIMARY KEY,
+                   guid TEXT,
+                   text TEXT,
+                   date INTEGER,
+                   is_from_me INTEGER,
+                   handle_id INTEGER,
+                   account TEXT,
+                   service TEXT
+                )"""
+            )
+            conn.execute(
+                "INSERT INTO message VALUES (1, 'GUID-OUT-1', 'hello remote', 633830889000000000, 1, 1, 'P:+19990000001', 'iMessage')"
+            )
+            conn.execute("CREATE TABLE chat (ROWID INTEGER PRIMARY KEY, chat_identifier TEXT, guid TEXT)")
+            conn.execute("INSERT INTO chat VALUES (1, '1', 'SMS;-;+13215362964')")
+            conn.execute("CREATE TABLE chat_message_join (chat_id INTEGER, message_id INTEGER)")
+            conn.execute("INSERT INTO chat_message_join VALUES (1, 1)")
+            conn.execute("CREATE TABLE chat_handle_join (chat_id INTEGER, handle_id INTEGER)")
+            conn.execute("INSERT INTO chat_handle_join VALUES (1, 1)")
+            conn.commit()
+            conn.close()
+
+            convs = list(mdi.ingest_sources([db_path], local_handle='+19990000001', min_messages=1))
+            self.assertGreater(len(convs), 0)
+            participants = {p.userid for p in convs[0].participants}
+            self.assertIn('+13215362964', participants)
+
     def test_text_is_not_whitespace_normalized_in_output_message(self):
         """Dedup keys should normalize text, but rebuilt messages must preserve source text."""
         with tempfile.TemporaryDirectory() as tmp:

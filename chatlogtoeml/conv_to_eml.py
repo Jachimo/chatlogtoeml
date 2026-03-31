@@ -162,6 +162,38 @@ def _subject_name_from_handle(value: str) -> str:
     return text.strip()
 
 
+def _subject_identifier_suffix(subject_name: str, identifier: str) -> str:
+    """Return an optional subject suffix for identifiers with clear human meaning.
+
+    Intentionally avoids opaque IDs and numeric delimiters in Subject lines.
+    """
+    ident = _ascii_header_text(identifier)
+    if not ident:
+        return ''
+
+    name_text = _ascii_header_text(subject_name)
+    if name_text and ident.lower() == name_text.lower():
+        return ''
+
+    # Omit purely numeric/phone-like IDs and opaque chat GUID forms.
+    if re.fullmatch(r'[0-9+\-(). ]+', ident):
+        return ''
+    if ident.lower().startswith(('sms;-;', 'chat;-;')):
+        return ''
+    if ';' in ident and '@' not in ident:
+        return ''
+
+    # Omit UUID/hex-like opaque identifiers.
+    if re.fullmatch(r'[A-Fa-f0-9-]{16,}', ident):
+        return ''
+
+    # Keep only identifiers with at least some alphabetic or email-like structure.
+    if not re.search(r'[A-Za-z@]', ident):
+        return ''
+
+    return f' ({ident})'
+
+
 def _pseudo_localpart_from_handle(value: str) -> str:
     """Build an RFC-safe local-part from a non-email handle."""
     text = _ascii_header_text(value)
@@ -357,8 +389,9 @@ def mimefromconv(conv: conversation.Conversation, no_background: bool = False) -
     if not safe_header_name:
         safe_header_name = _ascii_header_text(filenameuserid)
     safe_header_id = _ascii_header_text(filenameuserid)
+    subject_id_suffix = _subject_identifier_suffix(safe_header_name, safe_header_id)
     if _is_imessage_conversation(conv) and safe_header_id:
-        msg_base['Subject'] = f'{safe_header_service} with {safe_header_name} #{safe_header_id} on {header_date.strftime("%a, %b %e %Y")}'
+        msg_base['Subject'] = f'{safe_header_service} with {safe_header_name}{subject_id_suffix} on {header_date.strftime("%a, %b %e %Y")}'
     else:
         msg_base['Subject'] = f'{safe_header_service} with {safe_header_name} on {header_date.strftime("%a, %b %e %Y")}'
 

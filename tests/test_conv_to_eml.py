@@ -118,7 +118,7 @@ class TestConvToEmlEdgeCases(unittest.TestCase):
         conv.startdate = m.date
 
         eml = conv_to_eml.mimefromconv(conv)
-        self.assertEqual(eml['Subject'], 'iMessage with Remote Friend #12 on Tue, Feb 12 2013')
+        self.assertEqual(eml['Subject'], 'iMessage with Remote Friend on Tue, Feb 12 2013')
 
     def test_imessage_self_chat_subject_uses_local_name_and_chat_id(self):
         conv = conversation.Conversation()
@@ -138,7 +138,7 @@ class TestConvToEmlEdgeCases(unittest.TestCase):
         conv.startdate = m.date
 
         eml = conv_to_eml.mimefromconv(conv)
-        self.assertEqual(eml['Subject'], 'iMessage with Local User #12 on Tue, Feb 12 2013')
+        self.assertEqual(eml['Subject'], 'iMessage with Local User on Tue, Feb 12 2013')
 
     def test_headers_are_ascii_sanitized(self):
         conv = conversation.Conversation()
@@ -161,7 +161,7 @@ class TestConvToEmlEdgeCases(unittest.TestCase):
 
         eml = conv_to_eml.mimefromconv(conv)
         raw = eml.as_string()
-        self.assertIn('Subject: iMessage with Remote User #2 on Fri, Feb  1 2013', raw)
+        self.assertIn('Subject: iMessage with Remote User on Fri, Feb  1 2013', raw)
         self.assertIn('To: Remote User <15555550123@sms.imessage.invalid>', raw)
         self.assertNotIn('=?utf-8?', raw.lower())
 
@@ -184,7 +184,29 @@ class TestConvToEmlEdgeCases(unittest.TestCase):
         conv.startdate = m.date
 
         eml = conv_to_eml.mimefromconv(conv)
-        self.assertEqual(eml['Subject'], 'iMessage with 15555550999 #24 on Wed, Apr  3 2013')
+        self.assertEqual(eml['Subject'], 'iMessage with 15555550999 on Wed, Apr  3 2013')
+
+    def test_subject_keeps_semantic_identifier_without_hash(self):
+        conv = conversation.Conversation()
+        conv.imclient = 'iMessage'
+        conv.service = 'iMessage'
+        conv.filenameuserid = 'family-group@example.com'
+        conv.source_db_basename = 'chat.db'
+        conv.add_participant('local.user@example.test')
+        conv.add_participant('friend@example.com')
+        conv.set_local_account('local.user@example.test')
+        conv.add_realname_to_userid('local.user@example.test', 'Local User')
+        conv.add_realname_to_userid('friend@example.com', 'Remote Friend')
+
+        m = conversation.Message('message')
+        m.msgfrom = 'friend@example.com'
+        m.text = 'group ping'
+        m.date = datetime.datetime(2014, 5, 4, 12, 0, 0, tzinfo=datetime.timezone.utc)
+        conv.add_message(m)
+        conv.startdate = m.date
+
+        eml = conv_to_eml.mimefromconv(conv)
+        self.assertEqual(eml['Subject'], 'iMessage with Remote Friend (family-group@example.com) on Sun, May  4 2014')
 
     def test_tel_handle_to_header_uses_rfc_safe_pseudo_address(self):
         conv = conversation.Conversation()

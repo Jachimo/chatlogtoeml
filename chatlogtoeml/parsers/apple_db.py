@@ -640,21 +640,26 @@ def _iter_message_rows(conn: sqlite3.Connection):
     # chat_identifier (e.g. "+13215362964") is synced via iCloud and safe to use as a
     # cross-DB grouping key.
     has_chat_identifier = False
+    has_chat_guid = False
     if has_chat_join:
         try:
             cur.execute("PRAGMA table_info(chat)")
             _chat_cols = {r[1] for r in cur.fetchall()}
             has_chat_identifier = 'chat_identifier' in _chat_cols
+            has_chat_guid = 'guid' in _chat_cols
         except Exception:
             has_chat_identifier = False
+            has_chat_guid = False
 
     sql = f"SELECT {', '.join(select_cols)}"
     if has_chat_join:
         sql += ", c.chat_id as chat_id"
         if has_chat_identifier:
             sql += ", ch.chat_identifier as chat_identifier"
+        if has_chat_guid:
+            sql += ", ch.guid as chat_guid"
         sql += " FROM message m LEFT JOIN chat_message_join c ON m.ROWID = c.message_id"
-        if has_chat_identifier:
+        if has_chat_identifier or has_chat_guid:
             sql += " LEFT JOIN chat ch ON c.chat_id = ch.ROWID"
     else:
         sql += " FROM message m"
@@ -820,7 +825,8 @@ def parse_file(
             if 'chat_id' in row.keys():
                 chat_id = _row_get(row, 'chat_id')
             chat_id_str = _row_get(row, 'chat_identifier') if 'chat_identifier' in row.keys() else None
-            chat_identifier = chat_id_str or (str(chat_id) if chat_id is not None else (sender or 'unknown'))
+            chat_guid = _row_get(row, 'chat_guid') if 'chat_guid' in row.keys() else None
+            chat_identifier = chat_id_str or chat_guid or (str(chat_id) if chat_id is not None else (sender or 'unknown'))
 
             # attachments
             attachments = _get_attachments_for_message(conn, rowid)

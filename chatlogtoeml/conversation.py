@@ -3,6 +3,7 @@
 #  Uses type hints and requires Python 3.6+
 
 from datetime import datetime
+from typing import Optional
 import hashlib
 import copy
 import logging
@@ -20,8 +21,8 @@ class Conversation:
         self.localaccount: str = ''  # userid of local IM account
         self.remoteaccount: str = ''  # userid of remote IM account
         self.participants: list = []  # List of Participant objects
-        self.startdate: datetime = False
-        self.enddate: datetime = False
+        self.startdate: Optional[datetime] = None
+        self.enddate: Optional[datetime] = None
         self.messages: list = []  # List of Message objects
         self.hasattachments: bool = False  # Flag to indicate that 1 or more message contains an attachment
         # Optional: basename of originating DB (e.g., 'sms.db' or 'chat.db') used to derive pseudo-domain

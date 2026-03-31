@@ -33,11 +33,11 @@ def main(argv=None) -> int:
     parser.add_argument('--min-messages', type=int, default=2, help='Minimum messages to keep a segment')
     parser.add_argument('--max-messages', type=int, default=0, help='Force split at this many messages (0=unlimited)')
     parser.add_argument('--max-days', type=int, default=0, help='Force split if segment spans more than N days (0=unlimited)')
-    parser.set_defaults(embed_attachments=True)
+    parser.set_defaults(embed_attachments=True)  # change from previous default behavior
     parser.add_argument('--embed-attachments', dest='embed_attachments', action='store_true', help=argparse.SUPPRESS)
     parser.add_argument('--no-attach', dest='embed_attachments', action='store_false', help='Do not embed attachment payloads in EML; keep path metadata only')
     parser.add_argument('--no-background', action='store_true', help='Strip background style from HTML')
-    parser.set_defaults(clobber=True)
+    parser.set_defaults(clobber=True)  # change from prev behavior, for idempotency
     parser.add_argument('--clobber', action='store_true', help='Overwrite existing .eml files')
     parser.add_argument('--debug', action='store_true', help='Enable debug logging')
     args = parser.parse_args(argv)
@@ -46,8 +46,8 @@ def main(argv=None) -> int:
 
     infile = args.infile
     outdir = args.outdir
-    # Multi-source mode when --source provided
-    if args.source:
+
+    if args.source:  # Multi-source mode (when --source provided)
         sources = args.source
     else:
         sources = None
@@ -59,14 +59,16 @@ def main(argv=None) -> int:
         return 1
 
     idx_counters = {}
-    if sources:
-        conv_iter = ingest_sources(sources, local_handle=args.local_handle,
-                                   addressbook_path=args.address_book,
-                                   idle_hours=args.idle_hours, min_messages=args.min_messages,
-                                   max_messages=args.max_messages, max_days=args.max_days,
-                                   embed_attachments=args.embed_attachments)
-    else:
-        conv_iter = apple_db.parse_file(
+
+    # PRODUCE a lazy stream of Conversation objects ('conversations')
+    if sources:  # mult db -> process via multidb_ingest.ingest_sources
+        conversations = ingest_sources(sources, local_handle=args.local_handle,
+                                       addressbook_path=args.address_book,
+                                       idle_hours=args.idle_hours, min_messages=args.min_messages,
+                                       max_messages=args.max_messages, max_days=args.max_days,
+                                       embed_attachments=args.embed_attachments)
+    else:  # single db -> original recipe
+        conversations = apple_db.parse_file(
             infile,
             local_handle=args.local_handle,
             addressbook_path=args.address_book,
@@ -79,8 +81,9 @@ def main(argv=None) -> int:
             attachment_root=args.attachment_root,
         )
 
+    # CONSUME the conversations stream and write .eml files
     try:
-        for conv in conv_iter:
+        for conv in conversations:
             chat_id = conv.filenameuserid or conv.origfilename or 'chat'
             startdate = conv.startdate
             if not startdate:
@@ -102,6 +105,7 @@ def main(argv=None) -> int:
                 idx_counters[chat_id] = idx + 1
                 continue
 
+            # Custom headers
             if conv.filenameuserid:
                 eml['X-Chat-Identifier'] = conv.filenameuserid
             if getattr(conv, 'chat_guid', None):
@@ -110,11 +114,12 @@ def main(argv=None) -> int:
                 eml['X-Segment-Start'] = conv.startdate.isoformat()
             if conv.messages:
                 eml['X-Segment-Messages'] = str(len(conv.messages))
-            imsvc = getattr(conv, 'service', None)
-            if imsvc:
-                eml['X-iMessage-Service'] = imsvc
+            im_service = getattr(conv, 'service', None)
+            if im_service:
+                eml['X-iMessage-Service'] = im_service
             eml['X-Converted-By'] = _converted_by_name()
 
+            # Write out to destination dir
             try:
                 with open(outpath, 'w') as fo:
                     fo.write(eml.as_string())

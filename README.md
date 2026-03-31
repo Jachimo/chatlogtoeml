@@ -162,6 +162,14 @@ Files with non-ASCII or odd separators in their filenames may break parsing. Ren
 
 Logs without any human-generated content are skipped; they could be processed into a different format in future versions.
 
+### Multi-Source Ingest Loads All Attachment Payloads Into Memory
+
+When using `--source` (multi-DB ingest), `multidb_ingest.ingest_sources()` calls `parse_file(..., stream=False)` for each source database. This means all parsed attachment binary payloads from all DBs are held in memory simultaneously while the message-level deduplification pass runs. For a large collection (e.g. several years of photo attachments across 5 devices), this can require several gigabytes of RAM.
+
+**Mitigation:** pass `--no-attach` to skip embedding attachment payloads; path metadata is still preserved in the output EML via `X-Original-Attachment-Path` headers.
+
+A streaming redesign — where attachment data is written to disk and only referenced during MIME assembly — would be required to lift this constraint without `--no-attach`. This is deferred to a later release.
+
 ## References
 
 - `extras/adium/format-html` contains original Adium transformation helpers.

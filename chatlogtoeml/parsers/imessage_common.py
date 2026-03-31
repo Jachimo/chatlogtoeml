@@ -381,6 +381,7 @@ def build_conversation_from_segment(segment: List[dict], chat_identifier: str,
 
     if conv.messages:
         conv.startdate = conv.getoldestmessage().date
+        conv.enddate = conv.getyoungestmessage().date
     return conv
 
 

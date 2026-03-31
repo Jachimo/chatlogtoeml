@@ -54,58 +54,62 @@ def main(argv=None) -> int:
         logging.info('Input file large (%d bytes) - enabling streaming shards', fsize)
 
     idx_counters = {}
-    for conv in imessage_json.parse_file(
-        infile,
-        local_handle=args.local_handle,
-        idle_hours=args.idle_hours,
-        min_messages=args.min_messages,
-        max_messages=args.max_messages,
-        max_days=args.max_days,
-        stream=stream,
-        stream_dir=args.stream_tempdir,
-        embed_attachments=args.embed_attachments,
-    ):
-        chat_id = conv.filenameuserid or conv.origfilename or 'chat'
-        startdate = conv.startdate
-        if not startdate:
+    try:
+        for conv in imessage_json.parse_file(
+            infile,
+            local_handle=args.local_handle,
+            idle_hours=args.idle_hours,
+            min_messages=args.min_messages,
+            max_messages=args.max_messages,
+            max_days=args.max_days,
+            stream=stream,
+            stream_dir=args.stream_tempdir,
+            embed_attachments=args.embed_attachments,
+        ):
+            chat_id = conv.filenameuserid or conv.origfilename or 'chat'
+            startdate = conv.startdate
+            if not startdate:
+                try:
+                    startdate = conv.getoldestmessage().date
+                except Exception:
+                    startdate = None
+            idx = idx_counters.get(chat_id, 0)
+            outname = make_out_filename(chat_id, startdate or '', idx)
+            outpath = os.path.join(outdir, outname)
+            if os.path.exists(outpath) and not args.clobber:
+                logging.warning('Skipping existing file %s (use --clobber to overwrite)', outpath)
+                idx_counters[chat_id] = idx + 1
+                continue
             try:
-                startdate = conv.getoldestmessage().date
-            except Exception:
-                startdate = None
-        idx = idx_counters.get(chat_id, 0)
-        outname = make_out_filename(chat_id, startdate or '', idx)
-        outpath = os.path.join(outdir, outname)
-        if os.path.exists(outpath) and not args.clobber:
-            logging.warning('Skipping existing file %s (use --clobber to overwrite)', outpath)
-            idx_counters[chat_id] = idx + 1
-            continue
-        try:
-            eml = conv_to_eml.mimefromconv(conv, args.no_background)
-        except Exception as e:
-            logging.error('Failed to create MIME for chat %s: %s', chat_id, e)
-            idx_counters[chat_id] = idx + 1
-            continue
+                eml = conv_to_eml.mimefromconv(conv, args.no_background)
+            except Exception as e:
+                logging.error('Failed to create MIME for chat %s: %s', chat_id, e)
+                idx_counters[chat_id] = idx + 1
+                continue
 
-        if conv.filenameuserid:
-            eml['X-Chat-Identifier'] = conv.filenameuserid
-        if getattr(conv, 'chat_guid', None):
-            eml['X-Chat-GUID'] = conv.chat_guid
-        if hasattr(conv, 'startdate') and conv.startdate:
-            eml['X-Segment-Start'] = conv.startdate.isoformat()
-        if conv.messages:
-            eml['X-Segment-Messages'] = str(len(conv.messages))
-        imsvc = getattr(conv, 'service', None)
-        if imsvc:
-            eml['X-iMessage-Service'] = imsvc
-        eml['X-Converted-By'] = os.path.basename(sys.argv[0])
+            if conv.filenameuserid:
+                eml['X-Chat-Identifier'] = conv.filenameuserid
+            if getattr(conv, 'chat_guid', None):
+                eml['X-Chat-GUID'] = conv.chat_guid
+            if hasattr(conv, 'startdate') and conv.startdate:
+                eml['X-Segment-Start'] = conv.startdate.isoformat()
+            if conv.messages:
+                eml['X-Segment-Messages'] = str(len(conv.messages))
+            imsvc = getattr(conv, 'service', None)
+            if imsvc:
+                eml['X-iMessage-Service'] = imsvc
+            eml['X-Converted-By'] = os.path.basename(sys.argv[0])
 
-        try:
-            with open(outpath, 'w') as fo:
-                fo.write(eml.as_string())
-            logging.info('Wrote %s', outpath)
-        except Exception as e:
-            logging.error('Failed to write %s: %s', outpath, e)
-        idx_counters[chat_id] = idx + 1
+            try:
+                with open(outpath, 'w') as fo:
+                    fo.write(eml.as_string())
+                logging.info('Wrote %s', outpath)
+            except Exception as e:
+                logging.error('Failed to write %s: %s', outpath, e)
+            idx_counters[chat_id] = idx + 1
+    except Exception as e:
+        logging.error('Conversion failed: %s', e)
+        return 1
 
     return 0
 

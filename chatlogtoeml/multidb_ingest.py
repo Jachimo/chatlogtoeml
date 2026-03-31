@@ -212,6 +212,9 @@ def ingest_sources(source_specs: List[str], local_handle: Optional[str] = None,
                     rec['chat_id'] = getattr(conv, 'filenameuserid', '') or getattr(conv, 'chat_guid', '') or ''
                     rec['guid'] = getattr(msg, 'guid', None) or None
                     rec['sender'] = getattr(msg, 'msgfrom', '')
+                    rec['participants'] = [
+                        p.userid for p in getattr(conv, 'participants', []) or [] if getattr(p, 'userid', None)
+                    ]
                     rec['timestamp_utc'] = getattr(msg, 'date', None)
                     rec['text_raw'] = getattr(msg, 'text', '') or ''
                     rec['html_raw'] = getattr(msg, 'html', '') or ''
@@ -241,6 +244,11 @@ def ingest_sources(source_specs: List[str], local_handle: Optional[str] = None,
 
     if parse_failures and not records:
         raise RuntimeError('Failed to parse all provided sources; no conversations were produced')
+    if parse_failures:
+        logging.warning(
+            'Partial source failure: %d of %d source(s) failed to parse; proceeding with remaining records',
+            parse_failures, len(sources),
+        )
 
     # Group by dedupe key
     groups: Dict[str, List[Dict[str, Any]]] = {}
@@ -317,6 +325,9 @@ def ingest_sources(source_specs: List[str], local_handle: Optional[str] = None,
             # participants
             parts = set()
             for m in seg:
+                for participant in (m.get('participants') or []):
+                    if participant:
+                        parts.add(participant)
                 parts.add(m.get('sender') or '')
             if local_handle:
                 parts.add(local_handle)
@@ -349,6 +360,7 @@ def ingest_sources(source_specs: List[str], local_handle: Optional[str] = None,
                 conv.add_message(msg)
             if conv.messages:
                 conv.startdate = conv.getoldestmessage().date
+                conv.enddate = conv.getyoungestmessage().date
 
             # Derive source_db_basename so _determine_fakedomain() picks the right
             # pseudo-domain (sms.imessage.invalid / chat.imessage.invalid).
