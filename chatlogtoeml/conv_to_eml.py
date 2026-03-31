@@ -4,6 +4,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
 import hashlib
+import json as _json
 import datetime
 import email.encoders
 from email.utils import format_datetime, formataddr
@@ -193,6 +194,58 @@ def _format_header_address(userid: str, realname: str, fakedomain: str) -> str:
     if fallback_disp:
         return formataddr((fallback_disp, addr))
     return formataddr((addr, addr))
+
+
+def _make_message_index_part(conv: conversation.Conversation):
+    """Build a MIME attachment containing a JSON index of message GUIDs for this segment.
+
+    Returns a ``(MIMEBase part, sha256_hex)`` tuple, or ``(None, None)`` when no
+    non-empty GUIDs are available (e.g. legacy Adium logs that predate GUID tracking).
+
+    The JSON payload schema::
+
+        {
+          "schema_version": 1,
+          "chat_identifier": "<filenameuserid>",
+          "segment_start": "<ISO-8601 or null>",
+          "segment_end":   "<ISO-8601 or null>",
+          "message_count": <int>,
+          "guid_count":    <int>,
+          "guid_sha256":   "<SHA-256 hex of sorted GUIDs joined by newline>",
+          "message_guids": ["<guid1>", ...]   // chronological insertion order
+        }
+
+    ``guid_sha256`` is computed over the *sorted* GUID list so that two segments
+    covering exactly the same messages always produce the same fingerprint regardless
+    of the order in which messages were written.  This value is also emitted as the
+    ``X-Message-Index-SHA256`` header on the outer MIME envelope for fast scanning
+    without parsing the attachment body.
+    """
+    guids = [msg.guid for msg in conv.messages if getattr(msg, 'guid', None)]
+    if not guids:
+        return None, None
+
+    sorted_guids = sorted(guids)
+    digest = hashlib.sha256('\n'.join(sorted_guids).encode('utf-8')).hexdigest()
+
+    payload = {
+        'schema_version': 1,
+        'chat_identifier': getattr(conv, 'filenameuserid', '') or '',
+        'segment_start': conv.startdate.isoformat() if getattr(conv, 'startdate', None) else None,
+        'segment_end': conv.enddate.isoformat() if getattr(conv, 'enddate', None) else None,
+        'message_count': len(conv.messages),
+        'guid_count': len(guids),
+        'guid_sha256': digest,
+        'message_guids': guids,  # chronological; use guid_sha256 for order-insensitive comparison
+    }
+
+    data = _json.dumps(payload, indent=2).encode('utf-8')
+    part = MIMEBase('application', 'x-chatlogtoeml-index')
+    part.set_payload(data)
+    email.encoders.encode_base64(part)
+    part.add_header('Content-Disposition', 'attachment', filename='chatlogtoeml-index.json')
+    part.add_header('Content-ID', '<chatlogtoeml-index>')
+    return part, digest
 
 
 def mimefromconv(conv: conversation.Conversation, no_background: bool = False) -> MIMEMultipart:
@@ -472,5 +525,13 @@ def mimefromconv(conv: conversation.Conversation, no_background: bool = False) -
     # Set additional headers (comment out if not desired)
     msg_base['X-Converted-On'] = datetime.datetime.now().strftime('%a, %d %b %Y %T %z')
     msg_base['X-Original-File'] = conv.origfilename
+
+    # Attach a GUID index for future message-level deduplication.
+    # The companion X-Message-Index-SHA256 header lets scanners skip attachment parsing
+    # when doing a quick fingerprint comparison across an archive.
+    _index_part, _index_sha256 = _make_message_index_part(conv)
+    if _index_part is not None:
+        msg_base['X-Message-Index-SHA256'] = _index_sha256
+        msg_base.attach(_index_part)
 
     return msg_base

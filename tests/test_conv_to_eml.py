@@ -1,5 +1,6 @@
 import unittest
 import datetime
+import json
 
 from chatlogtoeml import conversation, conv_to_eml
 
@@ -231,6 +232,154 @@ class TestConvToEmlEdgeCases(unittest.TestCase):
         eml = conv_to_eml.mimefromconv(conv)
         raw = eml.as_string()
         self.assertIn('To: 17033463295 <17033463295@sms.imessage.invalid>', raw)
+
+
+class TestMessageIndex(unittest.TestCase):
+    """Tests for _make_message_index_part and its integration into mimefromconv."""
+
+    def _make_conv(self, guids, chat_identifier='chat-42',
+                   startdate=None, enddate=None):
+        """Helper: build a minimal Conversation with the given list of GUIDs."""
+        conv = conversation.Conversation()
+        conv.filenameuserid = chat_identifier
+        conv.add_participant('me')
+        conv.add_participant('other')
+        conv.set_local_account('me')
+        if startdate:
+            conv.startdate = startdate
+        if enddate:
+            conv.enddate = enddate
+        for guid in guids:
+            m = conversation.Message('message')
+            m.guid = guid
+            m.msgfrom = 'me'
+            m.text = 'hi'
+            m.date = datetime.datetime(2021, 6, 1, 12, 0, 0,
+                                       tzinfo=datetime.timezone.utc)
+            conv.add_message(m)
+        return conv
+
+    # ------------------------------------------------------------------
+    # _make_message_index_part unit tests
+    # ------------------------------------------------------------------
+
+    def test_returns_none_when_no_guids(self):
+        conv = self._make_conv([])
+        # add a guid-less message manually
+        m = conversation.Message('message')
+        m.msgfrom = 'me'
+        m.text = 'no guid here'
+        m.date = datetime.datetime(2021, 6, 1, tzinfo=datetime.timezone.utc)
+        conv.add_message(m)
+        part, digest = conv_to_eml._make_message_index_part(conv)
+        self.assertIsNone(part)
+        self.assertIsNone(digest)
+
+    def test_returns_none_when_guid_is_empty_string(self):
+        conv = self._make_conv([''])  # empty-string guid should be filtered out
+        part, digest = conv_to_eml._make_message_index_part(conv)
+        self.assertIsNone(part)
+        self.assertIsNone(digest)
+
+    def test_returns_part_and_digest_when_guids_present(self):
+        conv = self._make_conv(['AAAA-1111', 'BBBB-2222'])
+        part, digest = conv_to_eml._make_message_index_part(conv)
+        self.assertIsNotNone(part)
+        self.assertIsNotNone(digest)
+        self.assertEqual(len(digest), 64)  # SHA-256 produces a 64-char hex string
+
+    def test_json_structure_is_correct(self):
+        start = datetime.datetime(2021, 6, 1, 10, 0, tzinfo=datetime.timezone.utc)
+        end = datetime.datetime(2021, 6, 1, 11, 0, tzinfo=datetime.timezone.utc)
+        conv = self._make_conv(
+            ['guid-c', 'guid-a', 'guid-b'],
+            chat_identifier='chat-99',
+            startdate=start,
+            enddate=end,
+        )
+        part, digest = conv_to_eml._make_message_index_part(conv)
+        raw = part.get_payload(decode=True)
+        data = json.loads(raw)
+
+        self.assertEqual(data['schema_version'], 1)
+        self.assertEqual(data['chat_identifier'], 'chat-99')
+        self.assertEqual(data['guid_count'], 3)
+        self.assertEqual(data['message_count'], 3)
+        self.assertEqual(data['guid_sha256'], digest)
+        self.assertEqual(data['segment_start'], start.isoformat())
+        self.assertEqual(data['segment_end'], end.isoformat())
+        # message_guids must preserve chronological insertion order
+        self.assertEqual(data['message_guids'], ['guid-c', 'guid-a', 'guid-b'])
+        # sorted order used for the digest must differ from insertion order here
+        self.assertEqual(sorted(['guid-c', 'guid-a', 'guid-b']),
+                         ['guid-a', 'guid-b', 'guid-c'])
+
+    def test_sha256_is_order_independent(self):
+        """Same set of GUIDs in different insertion orders must hash identically."""
+        _, digest_abc = conv_to_eml._make_message_index_part(
+            self._make_conv(['guid-a', 'guid-b', 'guid-c']))
+        _, digest_cba = conv_to_eml._make_message_index_part(
+            self._make_conv(['guid-c', 'guid-b', 'guid-a']))
+        _, digest_bac = conv_to_eml._make_message_index_part(
+            self._make_conv(['guid-b', 'guid-a', 'guid-c']))
+        self.assertEqual(digest_abc, digest_cba)
+        self.assertEqual(digest_abc, digest_bac)
+
+    def test_sha256_differs_for_different_guid_sets(self):
+        _, d1 = conv_to_eml._make_message_index_part(
+            self._make_conv(['guid-a', 'guid-b']))
+        _, d2 = conv_to_eml._make_message_index_part(
+            self._make_conv(['guid-a', 'guid-x']))
+        self.assertNotEqual(d1, d2)
+
+    def test_content_type_and_disposition(self):
+        conv = self._make_conv(['some-guid'])
+        part, _ = conv_to_eml._make_message_index_part(conv)
+        ct = part.get_content_type()
+        self.assertEqual(ct, 'application/x-chatlogtoeml-index')
+        disp = part.get_param('filename', header='content-disposition')
+        self.assertEqual(disp, 'chatlogtoeml-index.json')
+
+    # ------------------------------------------------------------------
+    # Integration tests: mimefromconv output contains index
+    # ------------------------------------------------------------------
+
+    def test_eml_includes_index_header_when_guids_present(self):
+        conv = self._make_conv(['test-guid-0001', 'test-guid-0002'])
+        eml = conv_to_eml.mimefromconv(conv)
+        self.assertIn('X-Message-Index-SHA256', eml)
+
+    def test_eml_index_header_matches_attachment_digest(self):
+        conv = self._make_conv(['g1', 'g2', 'g3'])
+        eml = conv_to_eml.mimefromconv(conv)
+        header_digest = eml['X-Message-Index-SHA256']
+        # Find the chatlogtoeml-index attachment in the MIME tree
+        index_data = None
+        for part in eml.walk():
+            if part.get_content_type() == 'application/x-chatlogtoeml-index':
+                index_data = json.loads(part.get_payload(decode=True))
+                break
+        self.assertIsNotNone(index_data, 'chatlogtoeml-index attachment not found')
+        self.assertEqual(header_digest, index_data['guid_sha256'])
+
+    def test_eml_no_index_header_when_no_guids(self):
+        conv = conversation.Conversation()
+        conv.add_participant('me')
+        conv.add_participant('other')
+        conv.set_local_account('me')
+        m = conversation.Message('message')
+        # intentionally no guid
+        m.msgfrom = 'me'
+        m.text = 'legacy message without guid'
+        m.date = datetime.datetime(2021, 1, 1, tzinfo=datetime.timezone.utc)
+        conv.add_message(m)
+        eml = conv_to_eml.mimefromconv(conv)
+        self.assertNotIn('X-Message-Index-SHA256', eml)
+        # also verify no index attachment parts
+        for part in eml.walk():
+            self.assertNotEqual(part.get_content_type(),
+                                'application/x-chatlogtoeml-index')
+
 
 if __name__ == '__main__':
     unittest.main()
