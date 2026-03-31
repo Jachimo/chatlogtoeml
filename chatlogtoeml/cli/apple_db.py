@@ -8,6 +8,7 @@ import sys
 from .. import conv_to_eml
 from .common import make_out_filename
 from ..parsers import apple_db
+from ..multidb_ingest import ingest_sources
 
 
 def _converted_by_name(argv0: str = None) -> str:
@@ -27,6 +28,7 @@ def main(argv=None) -> int:
     parser.add_argument('--local-handle', help='Local account handle (phone/email) to use for From:', default=None)
     parser.add_argument('--address-book', help='Optional path to AddressBook.sqlitedb for participant real-name resolution', default=None)
     parser.add_argument('--attachment-root', help='Override root for attachment paths (for backups)', default=None)
+    parser.add_argument('--source', action='append', help='Repeatable: <db_path>[::attachment_root] to enable multi-source ingest')
     parser.add_argument('--idle-hours', type=float, default=8.0, help='Idle gap hours to segment conversations')
     parser.add_argument('--min-messages', type=int, default=2, help='Minimum messages to keep a segment')
     parser.add_argument('--max-messages', type=int, default=0, help='Force split at this many messages (0=unlimited)')
@@ -44,26 +46,39 @@ def main(argv=None) -> int:
 
     infile = args.infile
     outdir = args.outdir
-    if not os.path.isfile(infile):
-        logging.critical('Input DB not found: %s', infile)
-        return 1
+    # Multi-source mode when --source provided
+    if args.source:
+        sources = args.source
+    else:
+        sources = None
+        if not os.path.isfile(infile):
+            logging.critical('Input DB not found: %s', infile)
+            return 1
     if not os.path.isdir(outdir):
         logging.critical('Output dir (%s) specified but not a directory.', outdir)
         return 1
 
     idx_counters = {}
-    for conv in apple_db.parse_file(
-        infile,
-        local_handle=args.local_handle,
-        addressbook_path=args.address_book,
-        idle_hours=args.idle_hours,
-        min_messages=args.min_messages,
-        max_messages=args.max_messages,
-        max_days=args.max_days,
-        stream=False,
-        embed_attachments=args.embed_attachments,
-        attachment_root=args.attachment_root,
-    ):
+    if sources:
+        conv_iter = ingest_sources(sources, local_handle=args.local_handle,
+                                   idle_hours=args.idle_hours, min_messages=args.min_messages,
+                                   max_messages=args.max_messages, max_days=args.max_days,
+                                   embed_attachments=args.embed_attachments)
+    else:
+        conv_iter = apple_db.parse_file(
+            infile,
+            local_handle=args.local_handle,
+            addressbook_path=args.address_book,
+            idle_hours=args.idle_hours,
+            min_messages=args.min_messages,
+            max_messages=args.max_messages,
+            max_days=args.max_days,
+            stream=False,
+            embed_attachments=args.embed_attachments,
+            attachment_root=args.attachment_root,
+        )
+
+    for conv in conv_iter:
         chat_id = conv.filenameuserid or conv.origfilename or 'chat'
         startdate = conv.startdate
         if not startdate:

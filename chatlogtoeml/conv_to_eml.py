@@ -7,6 +7,7 @@ import hashlib
 import datetime
 import email.encoders
 from email.utils import format_datetime, formataddr
+import html as _html
 import re
 import logging
 import unicodedata
@@ -218,6 +219,8 @@ def mimefromconv(conv: conversation.Conversation, no_background: bool = False) -
 
     # Then a sub-part for the two alternative text and HTML components
     msg_texts = MIMEMultipart('alternative')
+    # Keep the body first in multipart/related for MUAs that prioritize early parts.
+    msg_base.attach(msg_texts)
 
     fakedomain = _determine_fakedomain(conv)  # derived pseudo-domain (sms/chat or fallback svc.imclient.invalid)
 
@@ -408,6 +411,16 @@ def mimefromconv(conv: conversation.Conversation, no_background: bool = False) -
                 line.append('</span>')
             if message.attachments:  # if the message has an Attachment, then we need to process it...
                 for att in message.attachments:  # in theory there could be >1 attachment per msg, but in practice rare
+                    is_inline_image = isinstance(att.mimetype, str) and att.mimetype.lower().startswith('image/')
+                    if is_inline_image:
+                        safe_name = _html.escape(att.name or 'image', quote=True)
+                        line.append(
+                            '\n<br><span class="attachment_image"><img src="cid:'
+                            + att.contentid
+                            + '" alt="'
+                            + safe_name
+                            + '" style="max-width: min(100%, 640px); height: auto; display: block; margin-top: 6px;"></span>'
+                        )
                     line.append('\n<br><span class="attachment">Attachment:&nbsp;<a href="cid:'
                                 + att.contentid + '">' + att.name + '</a></span>')
                     if att.data:
@@ -422,7 +435,10 @@ def mimefromconv(conv: conversation.Conversation, no_background: bool = False) -
                         attachment_part = MIMEBase(mime_main, mime_sub)
                         attachment_part.set_payload(att.data)
                         email.encoders.encode_base64(attachment_part)  # BASE64 for attachments
-                        attachment_part.add_header('Content-Disposition', 'attachment', filename=att.name)
+                        if is_inline_image:
+                            attachment_part.add_header('Content-Disposition', 'inline', filename=att.name)
+                        else:
+                            attachment_part.add_header('Content-Disposition', 'attachment', filename=att.name)
                         attachment_part.add_header('Content-ID', '<' + att.contentid + '>')
                         if att.mimetype:
                             try:
@@ -457,6 +473,4 @@ def mimefromconv(conv: conversation.Conversation, no_background: bool = False) -
     msg_base['X-Converted-On'] = datetime.datetime.now().strftime('%a, %d %b %Y %T %z')
     msg_base['X-Original-File'] = conv.origfilename
 
-    # Attach the (multipart/related) component to the root
-    msg_base.attach(msg_texts)
     return msg_base

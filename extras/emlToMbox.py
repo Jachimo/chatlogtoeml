@@ -7,8 +7,8 @@ Accepts as input either an individual .eml file or a directory containing one
 or more .eml files.
 
 Usage:
-$ ./emlToMbox.py inputdir/ output.mbox
-$ ./emlToMbox.py input.eml output.mbox
+$ python extras/emlToMbox.py inputdir/ output.mbox
+$ python extras/emlToMbox.py input.eml output.mbox
 
 STATUS:  Lightly tested using Python 3.9.1 
 """
@@ -77,6 +77,6 @@ def add_msg_to_mbox(fi, dest_mbox):
 
 if __name__ == "__main__":
     if len(sys.argv) != 3:
-        sys.stderr.write("Usage: ./emlToMbox.py input outbox.mbox\n")
+        sys.stderr.write("Usage: python extras/emlToMbox.py input outbox.mbox\n")
         sys.exit(1)
     sys.exit(main(sys.argv))

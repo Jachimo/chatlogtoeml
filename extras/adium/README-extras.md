@@ -15,6 +15,8 @@ The script takes as input a file containing a list of log files (such as the "fa
 Standalone script which takes a directory of .eml files and combines them into a single Unix .mbox file.
 The resulting .mbox can be imported into Apple Mail or many other MUAs.
 
+This script is now at `extras/emlToMbox.py` (moved out of the Adium subdirectory since it is format-agnostic).
+
 Forked from [this Github Gist](https://gist.github.com/kadin2048/c332a572a388acc22d56) and included here for convenience.
 
 ## failed_inspect.sh

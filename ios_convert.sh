@@ -97,6 +97,7 @@ NICE_LEVEL=${NICE_LEVEL:-10}
 # Lower I/O scheduling priority unless disabled.
 USE_IONICE=${USE_IONICE:-1}
 IONICE_CLASS=${IONICE_CLASS:-3}
+IONICE_LEVEL=${IONICE_LEVEL:-7}
 # Pace attachment reads in parser (milliseconds, every N attachments).
 ATTACH_READ_PAUSE_MS=${ATTACH_READ_PAUSE_MS:-15}
 ATTACH_READ_PAUSE_EVERY=${ATTACH_READ_PAUSE_EVERY:-1}
@@ -104,7 +105,7 @@ ATTACH_READ_PAUSE_EVERY=${ATTACH_READ_PAUSE_EVERY:-1}
 echo "Found ${#DB_LIST[@]} DB file(s)." | tee -a "$OUTDIR/$LOGFILE"
 echo "Using nice level: $NICE_LEVEL" | tee -a "$OUTDIR/$LOGFILE"
 if [[ "$USE_IONICE" != "0" ]] && command -v ionice >/dev/null 2>&1; then
-  echo "Using ionice class: $IONICE_CLASS" | tee -a "$OUTDIR/$LOGFILE"
+  echo "Using ionice class: $IONICE_CLASS level $IONICE_LEVEL" | tee -a "$OUTDIR/$LOGFILE"
 else
   echo "ionice unavailable/disabled; continuing without I/O priority hint" | tee -a "$OUTDIR/$LOGFILE"
 fi
@@ -126,7 +127,7 @@ for DB_PATH in "${DB_LIST[@]}"; do
   # Build command as an array to preserve quoting.
   CMD=(env "ATTACH_READ_PAUSE_MS=$ATTACH_READ_PAUSE_MS" "ATTACH_READ_PAUSE_EVERY=$ATTACH_READ_PAUSE_EVERY")
   if [[ "$USE_IONICE" != "0" ]] && command -v ionice >/dev/null 2>&1; then
-    CMD+=(ionice -c "$IONICE_CLASS")
+    CMD+=(ionice -c "$IONICE_CLASS" -n "$IONICE_LEVEL")
   fi
   CMD+=(nice -n "$NICE_LEVEL" ./bin/db_to_eml "$DB_PATH" "$TARGET_OUTDIR")
 
