@@ -500,11 +500,18 @@ def mimefromconv(conv: conversation.Conversation, no_background: bool = False) -
             line.append('<p class="message">')
             if message.date:
                 line.append('<span class="timestamp">')
-                # Keep legacy HTML compact timestamp formatting here (no
-                # timezone token) to preserve the previous visual layout in
-                # generated HTML. Plain-text lines above include timezone names
-                # for clarity.
-                line.append('(' + message.date.strftime(datefmt) + ')&nbsp;')
+                # Ensure timezone-aware display for HTML too; fall back to UTC
+                # when datetimes are naive so the HTML and plaintext parts
+                # show the same timezone information.
+                try:
+                    tzinfo = message.date.tzinfo
+                except Exception:
+                    tzinfo = None
+                if tzinfo is None:
+                    display_dt = message.date.replace(tzinfo=datetime.timezone.utc)
+                else:
+                    display_dt = message.date
+                line.append('(' + display_dt.strftime(datefmt + ' %Z') + ')&nbsp;')
                 line.append('</span>')
             if message.msgfrom:
                 if conv.userid_islocal(message.msgfrom):   # for local participant CSS
