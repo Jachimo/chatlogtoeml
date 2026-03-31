@@ -221,7 +221,14 @@ def _make_message_index_part(conv: conversation.Conversation):
     ``X-Message-Index-SHA256`` header on the outer MIME envelope for fast scanning
     without parsing the attachment body.
     """
-    guids = [msg.guid for msg in conv.messages if getattr(msg, 'guid', None)]
+    guids = []
+    for msg in conv.messages:
+        raw_guid = getattr(msg, 'guid', None)
+        if raw_guid is None:
+            continue
+        guid = str(raw_guid).strip()
+        if guid:
+            guids.append(guid)
     if not guids:
         return None, None
 

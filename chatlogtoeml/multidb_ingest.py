@@ -60,6 +60,32 @@ def _escape_component(s: str) -> str:
     return s.replace(ASCII_US, '\\x1f')
 
 
+def _merge_orig_paths(existing_path: Optional[str], new_path: Optional[str]) -> str:
+    """Merge attachment origin-path strings into a de-duplicated comma-separated list."""
+    existing_items = [p for p in (existing_path or '').split(',') if p]
+    seen = set(existing_items)
+    if new_path and new_path not in seen:
+        existing_items.append(new_path)
+    return ','.join(existing_items)
+
+
+def _choose_source_db_basename(seg: List[Dict[str, Any]]) -> str:
+    """Pick a representative source DB basename for a merged segment.
+
+    Uses message-count majority across source labels, with lexical tie-break to
+    keep behavior deterministic.
+    """
+    counts: Dict[str, int] = {}
+    for rec in seg:
+        label = (rec.get('provenance', {}).get('source_label', '') or '').strip()
+        if not label:
+            continue
+        counts[label] = counts.get(label, 0) + 1
+    if not counts:
+        return ''
+    return sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))[0][0]
+
+
 def _make_key(rec: Dict[str, Any]) -> Tuple[str, str]:
     # primary
     service = (rec.get('service') or '').lower()
@@ -154,6 +180,7 @@ def ingest_sources(source_specs: List[str], local_handle: Optional[str] = None,
     # Parse each DB into Conversation objects (per-chat segments). We will
     # iterate their messages and build normalized message records.
     records = []
+    parse_failures = 0
     for src in sources:
         idx = src['source_index']
         try:
@@ -186,8 +213,10 @@ def ingest_sources(source_specs: List[str], local_handle: Optional[str] = None,
                     rec['guid'] = getattr(msg, 'guid', None) or None
                     rec['sender'] = getattr(msg, 'msgfrom', '')
                     rec['timestamp_utc'] = getattr(msg, 'date', None)
-                    rec['text_norm'] = _normalize_text(getattr(msg, 'text', ''))
-                    rec['html_norm'] = _normalize_text(getattr(msg, 'html', ''))
+                    rec['text_raw'] = getattr(msg, 'text', '') or ''
+                    rec['html_raw'] = getattr(msg, 'html', '') or ''
+                    rec['text_norm'] = _normalize_text(rec['text_raw'])
+                    rec['html_norm'] = _normalize_text(rec['html_raw'])
                     rec['has_human_content'] = bool(rec['text_norm'] or rec['html_norm'])
                     # attachments
                     atts = []
@@ -207,7 +236,11 @@ def ingest_sources(source_specs: List[str], local_handle: Optional[str] = None,
                     rec['provenance'] = {'source_db': src['db_path'], 'source_label': src['source_label']}
                     records.append(rec)
         except Exception as e:
+            parse_failures += 1
             logging.error('Failed parsing source %s: %s', src['db_path'], e)
+
+    if parse_failures and not records:
+        raise RuntimeError('Failed to parse all provided sources; no conversations were produced')
 
     # Group by dedupe key
     groups: Dict[str, List[Dict[str, Any]]] = {}
@@ -250,8 +283,7 @@ def ingest_sources(source_specs: List[str], local_handle: Optional[str] = None,
                         existing['payload_hash'] = a.get('payload_hash') or existing.get('payload_hash')
                         existing['data'] = a.get('data') or existing.get('data')
                     # union provenance not tracked per-attachment here, but orig_path list
-                    if a.get('orig_path') and a.get('orig_path') not in (existing.get('orig_path') or ''):
-                        existing['orig_path'] = (existing.get('orig_path') or '') + ',' + a.get('orig_path')
+                    existing['orig_path'] = _merge_orig_paths(existing.get('orig_path'), a.get('orig_path'))
         winner_copy = dict(winner)
         winner_copy['attachments'] = list(merged.values())
         deduped.append(winner_copy)
@@ -297,8 +329,8 @@ def ingest_sources(source_specs: List[str], local_handle: Optional[str] = None,
                 msg.guid = m.get('guid') or ''
                 msg.msgfrom = m.get('sender') or 'UNKNOWN'
                 msg.date = m.get('timestamp_utc') or datetime.datetime.fromtimestamp(0, datetime.timezone.utc)
-                msg.text = m.get('text_norm') or ''
-                msg.html = m.get('html_norm') or ''
+                msg.text = m.get('text_raw') or ''
+                msg.html = m.get('html_raw') or ''
                 for a in m.get('attachments') or []:
                     att = conversation.Attachment()
                     att.name = a.get('name') or ''
@@ -320,8 +352,7 @@ def ingest_sources(source_specs: List[str], local_handle: Optional[str] = None,
 
             # Derive source_db_basename so _determine_fakedomain() picks the right
             # pseudo-domain (sms.imessage.invalid / chat.imessage.invalid).
-            source_labels = sorted({d.get('provenance', {}).get('source_label', '') for d in seg})
-            conv.source_db_basename = next((sl for sl in source_labels if sl), '')
+            conv.source_db_basename = _choose_source_db_basename(seg)
 
             # Mark which participant is local so From: header is correct.
             if local_handle:

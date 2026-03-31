@@ -281,6 +281,20 @@ class TestMessageIndex(unittest.TestCase):
         self.assertIsNone(part)
         self.assertIsNone(digest)
 
+    def test_returns_none_when_guid_is_whitespace(self):
+        conv = self._make_conv(['   '])
+        part, digest = conv_to_eml._make_message_index_part(conv)
+        self.assertIsNone(part)
+        self.assertIsNone(digest)
+
+    def test_non_string_guid_is_normalized_to_string(self):
+        conv = self._make_conv([12345])
+        part, digest = conv_to_eml._make_message_index_part(conv)
+        self.assertIsNotNone(part)
+        self.assertIsNotNone(digest)
+        data = json.loads(part.get_payload(decode=True))
+        self.assertEqual(data['message_guids'], ['12345'])
+
     def test_returns_part_and_digest_when_guids_present(self):
         conv = self._make_conv(['AAAA-1111', 'BBBB-2222'])
         part, digest = conv_to_eml._make_message_index_part(conv)

@@ -9,6 +9,20 @@ from chatlogtoeml import conversation
 
 
 class TestMultiDBIngestHelpers(unittest.TestCase):
+    def test_merge_orig_paths_deduplicates(self):
+        merged = mdi._merge_orig_paths('/a/b/c.jpg,/x/y/z.jpg', '/a/b/c.jpg')
+        self.assertEqual(merged, '/a/b/c.jpg,/x/y/z.jpg')
+        merged = mdi._merge_orig_paths(merged, '/n/m/q.jpg')
+        self.assertEqual(merged, '/a/b/c.jpg,/x/y/z.jpg,/n/m/q.jpg')
+
+    def test_choose_source_db_basename_majority(self):
+        seg = [
+            {'provenance': {'source_label': 'chat.db'}},
+            {'provenance': {'source_label': 'sms.db'}},
+            {'provenance': {'source_label': 'sms.db'}},
+        ]
+        self.assertEqual(mdi._choose_source_db_basename(seg), 'sms.db')
+
     def test_make_key_primary(self):
         rec = {'service': 'iMessage', 'guid': 'GUID123'}
         ktype, key = mdi._make_key(rec)
@@ -195,6 +209,24 @@ class TestIngestSourcesAddressBook(unittest.TestCase):
                     len(local_parts) > 0,
                     'At least one participant should be marked local'
                 )
+
+    def test_text_is_not_whitespace_normalized_in_output_message(self):
+        """Dedup keys should normalize text, but rebuilt messages must preserve source text."""
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = os.path.join(tmp, 'sms.db')
+            original_text = 'Hello   world\nline  2'
+            self._make_sms_db(db_path, '+13215362964', original_text)
+
+            convs = list(mdi.ingest_sources([db_path], local_handle='+19990000001', min_messages=1))
+            self.assertGreater(len(convs), 0)
+            self.assertGreater(len(convs[0].messages), 0)
+            self.assertEqual(convs[0].messages[0].text, original_text)
+
+    def test_all_sources_fail_raises_runtime_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            bad_path = os.path.join(tmp, 'missing.db')
+            with self.assertRaises(RuntimeError):
+                list(mdi.ingest_sources([bad_path], min_messages=1))
 
 
 if __name__ == '__main__':
