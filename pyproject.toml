@@ -26,3 +26,15 @@ include-package-data = true
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["chatlogtoeml*"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py39"
+# Exclude ad-hoc verification scripts that are not part of the package
+exclude = [".copilot"]
+
+[tool.ruff.lint]
+# E/W = pycodestyle errors/warnings, F = pyflakes (undefined names, unused imports, etc.)
+select = ["E", "F", "W"]
+# E501 (line too long) is a style concern — enforce formatting separately when ready
+ignore = ["E501"]

@@ -15,7 +15,7 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from .parsers import apple_db as apple_db_parser
 from .parsers import addressbook as addressbook_parser
-from .parsers.imessage_common import norm_user, segment_messages as _segment_messages
+from .parsers.imessage_common import segment_messages as _segment_messages
 from . import conversation
 
 

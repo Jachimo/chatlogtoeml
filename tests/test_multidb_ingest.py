@@ -6,7 +6,6 @@ import tempfile
 
 from chatlogtoeml import multidb_ingest as mdi
 from chatlogtoeml import conversation
-from chatlogtoeml.parsers import addressbook as ab_parser
 
 
 class TestMultiDBIngestHelpers(unittest.TestCase):

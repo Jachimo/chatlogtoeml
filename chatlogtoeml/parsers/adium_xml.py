@@ -53,11 +53,11 @@ def toconv(infile: BinaryIO) -> conversation.Conversation:
     # Special handling for Facebook Chat usernames, which are stored in directory structure in an odd way
     if '@chat.facebook.com' in conv.remoteaccount:
         rawfileid = conv.remoteaccount
-        conv.remoteaccount = re.match("^-([0-9]*)@chat\.facebook\.com$", rawfileid).group(1)
+        conv.remoteaccount = re.match(r"^-([0-9]*)@chat\.facebook\.com$", rawfileid).group(1)
     conv.filenameuserid = conv.origfilename.split(' (')[0]
     if '@chat.facebook.com' in conv.filenameuserid:
         rawfilenameuserid = conv.filenameuserid
-        conv.filenameuserid = re.match("^-([0-9]*)@chat\.facebook\.com$", rawfilenameuserid).group(1)
+        conv.filenameuserid = re.match(r"^-([0-9]*)@chat\.facebook\.com$", rawfilenameuserid).group(1)
 
     chat = dom.firstChild  # root element should always be <chat>
     conv.service = chat.getAttribute('service').strip()  # set the service (AIM, MSN, etc.)

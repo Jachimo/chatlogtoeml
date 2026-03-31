@@ -61,7 +61,7 @@ def apple_ts_to_dt(ts: Optional[int]) -> Optional[datetime.datetime]:
             v = float(ts)
         except Exception:
             return None
-    
+
     # Order-of-magnitude scaling (nano/micro/milli/seconds)
     try:
         if v > 1e14:
@@ -748,7 +748,7 @@ def parse_file(
     ) -> Iterable["Conversation"]:
     """Parse an Apple Messages SQLite DB and yield Conversation objects.
 
-    Creates same raw message dict that 
+    Creates same raw message dict that
     `imessage_json.build_conversation_from_segment` expects; reuses that
     function to produce Conversation objects.
     """
