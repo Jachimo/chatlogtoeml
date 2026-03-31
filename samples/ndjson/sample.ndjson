@@ -1,0 +1,4 @@
+{"guid":"m1","chat_identifier":"+15551234567","chat_guid":"chat1","date":"2021-01-01T12:00:00-05:00","is_from_me":false,"sender":"+15557654321","participants":["+15551234567","+15557654321"],"service":"iMessage","text":"Hello there"}
+{"guid":"m2","chat_identifier":"+15551234567","chat_guid":"chat1","date":"2021-01-01T12:01:00-05:00","is_from_me":true,"sender":null,"participants":["+15551234567","+15557654321"],"service":"iMessage","text":"Hi!"}
+{"guid":"m3","chat_identifier":"group-abc123","chat_guid":"chat2","date":"2021-02-02T09:00:00-05:00","is_from_me":false,"sender":"alice@example.com","participants":["me@icloud.com","alice@example.com","bob@example.com"],"service":"iMessage","text":"Howdy folks"}
+{"guid":"m4","chat_identifier":"group-abc123","chat_guid":"chat2","date":"2021-02-02T09:05:00-05:00","is_from_me":true,"sender":null,"participants":["me@icloud.com","alice@example.com","bob@example.com"],"service":"iMessage","text":"Morning"}

@@ -1,0 +1,12 @@
+{
+  "case-001-text-only": "plain text from text column",
+  "case-002-text-wins": "text wins over blobs",
+  "case-003-attr-streamtyped": "from streamtyped attr",
+  "case-004-attr-bplist": "from attributedBody bplist",
+  "case-005-payload-bplist": "from payload_data bplist",
+  "case-006-attr-bad-payload-good": "payload fallback after bad attr",
+  "case-007-all-bad": "",
+  "case-008-payload-xml-plist": "from payload xml plist",
+  "case-009-attr-inline-marker": "\ufffcinline object marker",
+  "case-010-streamtyped-lossy": "lossy streamtyped text"
+}

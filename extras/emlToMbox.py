@@ -7,10 +7,10 @@ Accepts as input either an individual .eml file or a directory containing one
 or more .eml files.
 
 Usage:
-$ ./emlToMbox.py inputdir/ output.mbox
-$ ./emlToMbox.py input.eml output.mbox
+$ python extras/emlToMbox.py inputdir/ output.mbox
+$ python extras/emlToMbox.py input.eml output.mbox
 
-STATUS:  Lightly tested using Python 3.9.1 
+STATUS:  Lightly tested using Python 3.9.1
 """
 
 import os
@@ -23,14 +23,14 @@ DEBUG = True
 def main(args):
     infile_name = args[1]
     dest_name = args[2]
-    
+
     if DEBUG:
         print("Input is:  " + infile_name)
         print("Output is: " + dest_name)
-    
+
     dest_mbox = mailbox.mbox(dest_name, create=True)  # if dest doesn't exist create it
     dest_mbox.lock()  # lock the mbox file
-    
+
     if os.path.isdir(infile_name):
         if DEBUG:
             print("Detected directory as input, using directory mode")
@@ -77,6 +77,6 @@ def add_msg_to_mbox(fi, dest_mbox):
 
 if __name__ == "__main__":
     if len(sys.argv) != 3:
-        sys.stderr.write("Usage: ./emlToMbox.py input outbox.mbox\n")
+        sys.stderr.write("Usage: python extras/emlToMbox.py input outbox.mbox\n")
         sys.exit(1)
     sys.exit(main(sys.argv))

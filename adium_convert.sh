@@ -11,16 +11,16 @@ failfile=failed_$(date -I).log    # for unsuccessfully processed files
 mkdir -p "$outdir"  # create output dir if it doesn't already exist
 
 # Traditional use of `find` command to bulk-process files based on extension:
-#find "$indir" -name '*.chatlog' -exec ./adiumToEml.py {} "$outdir" --no-background \; | tee "$outdir"/"$logfile"
-#find "$indir" -name '*.AdiumHTMLLog' -exec ./adiumToEml.py {} "$outdir" --no-background \; | tee -a "$outdir"/"$logfile"
-#find "$indir" -name '*.html' -exec ./adiumToEml.py {} "$outdir" --no-background \; | tee -a "$outdir"/"$logfile"
+#find "$indir" -name '*.chatlog' -exec ./bin/chat_convert {} "$outdir" --no-background \; | tee "$outdir"/"$logfile"
+#find "$indir" -name '*.AdiumHTMLLog' -exec ./bin/chat_convert {} "$outdir" --no-background \; | tee -a "$outdir"/"$logfile"
+#find "$indir" -name '*.html' -exec ./bin/chat_convert {} "$outdir" --no-background \; | tee -a "$outdir"/"$logfile"
 
 # Improved method, which writes failures to process to a file, in addition to normal success log
 # Ref. https://unix.stackexchange.com/questions/195677/bash-error-handling-on-find-exec
 find "$indir" -name '*.chatlog' -exec \
-bash -c './adiumToEml.py "$1" "$2" --no-background --attach || echo "$1">"$3"' none {} "$outdir" "$outdir"/"$failfile" \; \
+bash -c './bin/chat_convert "$1" "$2" --no-background --attach || echo "$1">"$3"' none {} "$outdir" "$outdir"/"$failfile" \; \
 | tee "$outdir"/"$logfile"
 
 find "$indir" -name '*.AdiumHTMLLog' -exec \
-bash -c './adiumToEml.py "$1" "$2" --no-background --attach || echo "$1">>"$3"' none {} "$outdir" "$outdir"/"$failfile" \; \
+bash -c './bin/chat_convert "$1" "$2" --no-background --attach || echo "$1">>"$3"' none {} "$outdir" "$outdir"/"$failfile" \; \
 | tee -a "$outdir"/"$logfile"

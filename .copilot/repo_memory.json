@@ -1,0 +1,61 @@
+{
+  "repo": "chatlogtoeml",
+  "generated_by": "Copilot",
+  "generated_at": "2026-03-14T12:30:00Z",
+  "facts": [
+    {
+      "subject": "python_requirements",
+      "fact": "Requires Python >=3.9; runtime dependencies: pytz, python-dateutil",
+      "citations": "README.md:21-30",
+      "reason": "Needed to run converters and parse timezones reliably. Future tooling should install these before running tests or converters."
+    },
+    {
+      "subject": "css_loading",
+      "fact": "conv_to_eml loads converted.css from the module directory at import time",
+      "citations": "conv_to_eml.py:16-23",
+      "reason": "Converters must be run from the repository root or ensure converted.css is present in the CWD unless code is changed."
+    },
+    {
+      "subject": "chat_convert",
+      "fact": "bin/chat_convert is the Adium/XML/HTML CLI and accepts --clobber, --attach, --no-background, and --debug.",
+      "citations": "README.md:7-14",
+      "reason": "Documents how to run the legacy converter with the new script name."
+    },
+    {
+      "subject": "ndjson_cli",
+      "fact": "bin/json_to_eml is the NDJSON CLI; supports --stream, --stream-tempdir, --no-attach, --local-handle, --no-background, --clobber, and segmentation options (idle-hours/max-messages/max-days).",
+      "citations": "README.md:15-29",
+      "reason": "Explains how to run the NDJSON converter and available flags for streaming and disabling attachment embedding."
+    },
+    {
+      "subject": "date_policy",
+      "fact": "Parser coerces unparseable/missing message dates to UTC epoch (1970-01-01T00:00:00Z) and ensures timezone-aware datetimes",
+      "citations": "imessage_json.py:_parse_date and _raw_to_message",
+      "reason": "Preserves deterministic ordering and Message-ID generation. Future changes to date fallback policy should be explicit."
+    },
+    {
+      "subject": "participant_normalization",
+      "fact": "Participant entries (strings or dicts) are normalized; keys tried: id, identifier, handle, address, username, phone, value",
+      "citations": "imessage_json.py:_norm_user and build_conversation_from_segment",
+      "reason": "Avoids passing dict objects into Conversation.add_participant and ensures consistent participant userids."
+    },
+    {
+      "subject": "reactions",
+      "fact": "Reactions are grouped and rendered as inline HTML badges (emoji×count) when possible, with textual fallback; reactions targeting messages outside the segment become system events",
+      "citations": "imessage_json.py:_group_reactions, _render_reactions_html",
+      "reason": "Explains reaction rendering behavior for consumers of .eml HTML."
+    },
+    {
+      "subject": "streaming",
+      "fact": "Streaming mode shards NDJSON into per-chat temporary files to avoid large memory usage; auto-enabled for large files.",
+      "citations": "imessage_json.py:parse_file (stream mode) and chatlogtoeml/cli/ndjson.py",
+      "reason": "Important for processing large exports without OOM."
+    },
+    {
+      "subject": "tests",
+      "fact": "Unit tests under tests/ cover reaction rendering, embedding attachments, streaming parsing, and conv_to_eml edge cases. Run with: python3 -m unittest tests/test_imessage_json.py tests/test_conv_to_eml.py",
+      "citations": "tests/test_imessage_json.py, tests/test_conv_to_eml.py",
+      "reason": "How to validate behavior before and after changes."
+    }
+  ]
+}

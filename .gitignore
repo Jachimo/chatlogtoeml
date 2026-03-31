@@ -143,3 +143,13 @@ venv.bak/
 
 # Script output logfiles
 converted_*.log
+
+# Local conversion/test outputs
+output/
+samples/output/
+
+# Exclude raw/real sample directories (extra safety)
+real
+real/
+realworld
+realworld/
