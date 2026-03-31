@@ -61,6 +61,7 @@ def main(argv=None) -> int:
     idx_counters = {}
     if sources:
         conv_iter = ingest_sources(sources, local_handle=args.local_handle,
+                                   addressbook_path=args.address_book,
                                    idle_hours=args.idle_hours, min_messages=args.min_messages,
                                    max_messages=args.max_messages, max_days=args.max_days,
                                    embed_attachments=args.embed_attachments)

@@ -14,6 +14,7 @@ import os
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from .parsers import apple_db as apple_db_parser
+from .parsers import addressbook as addressbook_parser
 from .parsers.imessage_common import norm_user
 from . import conversation
 
@@ -122,6 +123,7 @@ def _score_candidate(rec: Dict[str, Any]) -> Tuple[int, int, int]:
 
 
 def ingest_sources(source_specs: List[str], local_handle: Optional[str] = None,
+                   addressbook_path: Optional[str] = None,
                    idle_hours: float = 8.0, min_messages: int = 2,
                    max_messages: int = 0, max_days: int = 0,
                    embed_attachments: bool = True) -> Iterable[conversation.Conversation]:
@@ -140,6 +142,15 @@ def ingest_sources(source_specs: List[str], local_handle: Optional[str] = None,
             raise ValueError('Empty db_path in source spec')
         sources.append({'source_index': idx, 'db_path': dbp, 'attachment_root': spec.get('attachment_root'), 'source_label': os.path.basename(dbp)})
 
+    # Load the address book once up front so it can be applied after dedup rebuild.
+    ab_data = None
+    if addressbook_path:
+        try:
+            ab_data = addressbook_parser.load_address_book(addressbook_path)
+            logging.info('Loaded Address Book from %s: %d handle mappings', addressbook_path, len(ab_data.handle_to_name))
+        except Exception as _ab_err:
+            logging.warning('Failed to load Address Book DB %s: %s', addressbook_path, _ab_err)
+
     # Parse each DB into Conversation objects (per-chat segments). We will
     # iterate their messages and build normalized message records.
     records = []
@@ -149,7 +160,7 @@ def ingest_sources(source_specs: List[str], local_handle: Optional[str] = None,
             for conv in apple_db_parser.parse_file(
                 src['db_path'],
                 local_handle=local_handle,
-                addressbook_path=None,
+                addressbook_path=None,  # enrichment is applied post-dedup below
                 idle_hours=idle_hours,
                 min_messages=min_messages,
                 max_messages=max_messages,
@@ -317,6 +328,30 @@ def ingest_sources(source_specs: List[str], local_handle: Optional[str] = None,
                 conv.add_message(msg)
             if conv.messages:
                 conv.startdate = conv.getoldestmessage().date
+
+            # Derive source_db_basename so _determine_fakedomain() picks the right
+            # pseudo-domain (sms.imessage.invalid / chat.imessage.invalid).
+            source_labels = sorted({d.get('provenance', {}).get('source_label', '') for d in seg})
+            conv.source_db_basename = next((sl for sl in source_labels if sl), '')
+
+            # Mark which participant is local so From: header is correct.
+            if local_handle:
+                conv.set_local_account(local_handle)
+
+            # Enrich participant display names from the address book.
+            if ab_data and ab_data.handle_to_name:
+                for participant in conv.participants:
+                    resolved = addressbook_parser.resolve_name_for_handle(
+                        participant.userid, ab_data.handle_to_name)
+                    if resolved:
+                        participant.realname = resolved
+                # Enrich the local account with the owner name if available.
+                if ab_data.owner_name and local_handle:
+                    for participant in conv.participants:
+                        if participant.userid and participant.userid.lower() == local_handle.lower():
+                            participant.realname = ab_data.owner_name
+                            break
+
             yield conv
 
 
