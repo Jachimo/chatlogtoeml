@@ -12,5 +12,5 @@ cat "$LIST" | \
 while read -r LINE;
 do
   [ "${LINE:0:1}" = "#" ] && continue
-  ./adiumToEml.py --no-background --attach "$LINE" "$OUTDIR"
+  ./bin/chat_convert --no-background --attach "$LINE" "$OUTDIR"
 done

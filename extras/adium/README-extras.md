@@ -8,12 +8,14 @@ This is a small shell script designed to repair Adium XML logs that have a malfo
 
 During testing, I found that some log files produced during a very specific date range (probably a single point-release of Adium) had `</?xml>` tags where they should have `</chat>` tags, which will cause minidom to error.  Depending on when you used Adium, you may or may not encounter logs like this.
 
-The script takes as input a file containing a list of log files (such as the "failed_YYYY-MM-DD.log" file emitted by adiumToEml) and performs a find/replace on each of them to fix the malformed tag.
+The script takes as input a file containing a list of log files (such as the "failed_YYYY-MM-DD.log" file emitted by `./adium_convert.sh`, which now wraps `bin/chat_convert`) and performs a find/replace on each of them to fix the malformed tag.
 
 ## emlToMbox.py
 
 Standalone script which takes a directory of .eml files and combines them into a single Unix .mbox file.
 The resulting .mbox can be imported into Apple Mail or many other MUAs.
+
+This script is now at `extras/emlToMbox.py` (moved out of the Adium subdirectory since it is format-agnostic).
 
 Forked from [this Github Gist](https://gist.github.com/kadin2048/c332a572a388acc22d56) and included here for convenience.
 

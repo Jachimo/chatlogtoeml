@@ -1,0 +1,118 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["main"]
+
+# Minimal read-only permissions; individual jobs don't need write access.
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Ruff lint
+        run: uvx ruff check .
+
+  test:
+    name: Test (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install project
+        run: uv sync --frozen
+
+      - name: Run tests
+        run: uv run python -m unittest discover -v tests/
+
+  typecheck:
+    name: Type check (advisory)
+    runs-on: ubuntu-latest
+    # Non-blocking — mypy findings are informational until stubs are complete
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Install project
+        run: uv sync --frozen
+
+      - name: mypy
+        run: uv run --with mypy mypy --ignore-missing-imports chatlogtoeml
+
+  smoke:
+    name: Smoke tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Install project
+        run: uv sync --frozen
+
+      - name: Smoke — chat_convert (Adium XML)
+        run: |
+          uv run chat_convert "samples/adiumxml/theirscreenname (2007-03-25T12.31.28-0400).chatlog" /tmp/smoke_adiumxml --clobber
+          ls /tmp/smoke_adiumxml/*.eml
+
+      - name: Smoke — json_to_eml (NDJSON)
+        run: |
+          uv run json_to_eml samples/ndjson/sample.ndjson /tmp/smoke_json --clobber
+          ls /tmp/smoke_json/*.eml
+
+      - name: Smoke — db_to_eml (iOS sms.db)
+        run: |
+          uv run db_to_eml samples/ios/sms.db /tmp/smoke_ios --clobber
+          ls /tmp/smoke_ios/*.eml
+
+      - name: Smoke — db_to_eml (macOS chat.db)
+        run: |
+          uv run db_to_eml samples/macos/chat.db /tmp/smoke_macos --clobber
+          ls /tmp/smoke_macos/*.eml
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Build sdist and wheel
+        run: uv build
+
+      - name: Check dist metadata
+        run: uvx twine check dist/*

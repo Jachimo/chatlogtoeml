@@ -1,0 +1,399 @@
+"""Shared iMessage parser helpers.
+
+This module contains chat/message normalization and segmentation logic used by
+both NDJSON and Apple DB parser entrypoints.
+"""
+
+import datetime
+import html as _html
+import logging
+import os
+import time
+from typing import Any, Dict, Iterable, List, Optional, Tuple
+
+import dateutil.parser  # type: ignore[import-untyped]
+
+from .. import conversation
+from ..normalize import normalize_user
+
+
+_ATTACH_READ_COUNTER = 0
+
+
+def _attachment_read_pacing() -> None:
+    """Optionally sleep between attachment reads to reduce I/O burst load.
+
+    Reads two environment variables at call time (not at import time) so they
+    can be adjusted without restarting the process:
+
+    ``ATTACH_READ_PAUSE_MS``
+        Milliseconds to sleep after every N attachments.  0 (the default)
+        disables pacing entirely.  Values in the range 15-100 ms work well for
+        NAS-backed attachment directories.
+
+    ``ATTACH_READ_PAUSE_EVERY``
+        Apply the sleep only every N-th attachment (default 1 = every read).
+        Increase this to reduce overhead when attachments are small, e.g.
+        set to 5 to pause once per 5 reads.
+
+    These variables are read by Python and therefore take effect regardless of
+    how the process was started (wrapper script or direct invocation).
+    They are distinct from the OS-level ``NICE_LEVEL`` / ``USE_IONICE`` /
+    ``IONICE_CLASS`` / ``IONICE_LEVEL`` variables, which are only applied by
+    the shell wrappers (``ios_multi_convert.sh``, ``ios_convert.sh``) via the
+    ``nice``/``ionice`` prefix commands they construct.
+    """
+    global _ATTACH_READ_COUNTER
+    _ATTACH_READ_COUNTER += 1
+    try:
+        pause_ms = int(os.getenv('ATTACH_READ_PAUSE_MS', '0'))
+    except Exception:
+        pause_ms = 0
+    try:
+        every = int(os.getenv('ATTACH_READ_PAUSE_EVERY', '1'))
+    except Exception:
+        every = 1
+    if pause_ms <= 0:
+        return
+    if every <= 0:
+        every = 1
+    if _ATTACH_READ_COUNTER % every == 0:
+        time.sleep(pause_ms / 1000.0)
+
+
+# Reaction rendering utilities
+_REACTION_EMOJI = {
+    'like': '👍', 'love': '❤️', 'laugh': '😂', 'haha': '😂',
+    'dislike': '👎', 'emphasize': '❗', 'question': '❓',
+    'heart': '❤️', 'thumbs_up': '👍', 'thumbs_down': '👎'
+}
+
+
+def parse_date(datestr):
+    if not datestr:
+        return None
+    try:
+        dt = dateutil.parser.parse(datestr)
+        # Ensure timezone-aware datetimes for consistent arithmetic
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=datetime.timezone.utc)
+        return dt
+    except Exception:
+        logging.debug(f'unable to parse date: {datestr}')
+        return None
+
+
+def norm_user(user):
+    """Normalize a user identifier into a simple string.
+
+    Accepts strings or dicts commonly emitted by iMessage exporters and
+    returns a representative string or None.
+    """
+    return normalize_user(user)
+
+
+def _group_reactions(reaction_list):
+    grouped = {}
+    for reaction in reaction_list:
+        reaction_type = (reaction.get('reaction_type') or reaction.get('reaction') or 'reacted')
+        if reaction_type is None:
+            reaction_type = 'reacted'
+        key = reaction_type.lower()
+        actor = norm_user(reaction.get('actor') or reaction.get('sender') or reaction.get('handle')) or 'UNKNOWN'
+        grouped.setdefault(key, []).append(actor)
+    return grouped
+
+
+# Reaction rendering: reactions are represented as small UI fragments. We
+# intentionally map a canonical set of reaction types to emoji and fall
+# back to textual labels when unknown; grouping makes multi-actor reactions
+# concise in both HTML and text outputs.
+
+
+def _render_reactions_html(reaction_list):
+    grouped = _group_reactions(reaction_list)
+    parts = []
+    for reaction_type, actors in grouped.items():
+        emoji = _REACTION_EMOJI.get(reaction_type)
+        title = _html.escape(', '.join(actors))
+        if emoji:
+            if len(actors) > 1:
+                parts.append(f'<span class="reaction" title="{title}">{emoji}×{len(actors)}</span>')
+            else:
+                parts.append(f'<span class="reaction" title="{title}">{emoji}</span>')
+        else:
+            label = _html.escape(reaction_type)
+            if len(actors) > 1:
+                parts.append(f'<span class="reaction" title="{title}">{label}×{len(actors)}</span>')
+            else:
+                parts.append(f'<span class="reaction" title="{title}">{label}</span>')
+    if parts:
+        return '<div class="reactions">' + ' '.join(parts) + '</div>'
+    return ''
+
+
+def _render_reactions_text(reaction_list):
+    grouped = _group_reactions(reaction_list)
+    parts = []
+    for reaction_type, actors in grouped.items():
+        emoji = _REACTION_EMOJI.get(reaction_type)
+        if emoji:
+            if len(actors) > 1:
+                parts.append(f'{emoji}×{len(actors)} ({",".join(actors)})')
+            else:
+                parts.append(f'{emoji} ({actors[0]})')
+        else:
+            if len(actors) > 1:
+                parts.append(f'{reaction_type}×{len(actors)} ({",".join(actors)})')
+            else:
+                parts.append(f'{reaction_type} ({actors[0]})')
+    return ' | '.join(parts) if parts else ''
+
+
+def _raw_to_message(obj: dict, local_handle: Optional[str]) -> conversation.Message:
+    msg = conversation.Message('message')
+    msg.guid = obj.get('guid', '')
+    msg.text = obj.get('text') or ''
+    msg.html = obj.get('html') or ''
+    # Ensure messages have a deterministic fallback date (epoch UTC) when unparseable.
+    msg.date = parse_date(obj.get('date')) or datetime.datetime.fromtimestamp(0, datetime.timezone.utc)
+    # Determine sender.
+    if obj.get('is_from_me'):
+        msg.msgfrom = local_handle or 'me'
+    else:
+        msg.msgfrom = norm_user(obj.get('sender') or obj.get('handle')) or 'UNKNOWN'
+    return msg
+
+
+def segment_messages(raw_msgs: List[dict], idle_hours: float = 8.0, min_messages: int = 2,
+                     max_messages: int = 0, max_days: int = 0) -> Iterable[List[dict]]:
+    """Split raw message dicts into segments based on idle gap and limits."""
+    if not raw_msgs:
+        return
+    parsed = []
+    for raw in raw_msgs:
+        raw_dt = parse_date(raw.get('date'))
+        if raw_dt is None:
+            # If no date, push far in the past to keep ordering stable.
+            raw_dt = datetime.datetime.fromtimestamp(0, datetime.timezone.utc)
+        parsed.append((raw_dt, raw))
+    parsed.sort(key=lambda x: x[0])
+
+    # Build initial segments list, then post-process to merge short segments into
+    # adjacent segments (prefer previous) rather than dropping them. This keeps
+    # messages from being silently discarded when min_messages > 1.
+    current: List[Tuple[Any, dict]] = []
+    last_dt = None
+    start_dt = None
+    segments: List[List[Tuple[Any, dict]]] = []
+    for dt, raw in parsed:
+        if not current:
+            current.append((dt, raw))
+            last_dt = dt
+            start_dt = dt
+            continue
+        gap = (dt - last_dt).total_seconds()
+        split = False
+        # Split on idle gap.
+        if idle_hours and gap > idle_hours * 3600:
+            split = True
+        # Split on max_days.
+        if not split and max_days and start_dt and (dt - start_dt).total_seconds() > max_days * 86400:
+            split = True
+        # Force split by max_messages.
+        if not split and max_messages and len(current) >= max_messages:
+            split = True
+
+        if split:
+            segments.append(current)
+            current = [(dt, raw)]
+            last_dt = dt
+            start_dt = dt
+            continue
+
+        current.append((dt, raw))
+        last_dt = dt
+
+    if current:
+        segments.append(current)
+
+    # First, coalesce adjacent short segments so runs of 1-message segments
+    # are combined before attempting to merge into neighbors.
+    coalesced: List[List[tuple]] = []
+    i = 0
+    while i < len(segments):
+        seg = segments[i]
+        if len(seg) >= min_messages:
+            coalesced.append(seg)
+            i += 1
+            continue
+        # collect contiguous short segments
+        run = list(seg)
+        j = i + 1
+        while j < len(segments) and len(segments[j]) < min_messages:
+            run.extend(segments[j])
+            j += 1
+        coalesced.append(run)
+        i = j
+
+    # Now merge any remaining short segments into neighbors (prefer previous)
+    merged: List[List[tuple]] = []
+    for idx, seg in enumerate(coalesced):
+        if len(seg) >= min_messages:
+            merged.append(seg)
+            continue
+        # try merge into previous
+        if merged:
+            logging.debug('Merging short segment of %d into previous segment', len(seg))
+            merged[-1].extend(seg)
+        elif idx + 1 < len(coalesced):
+            logging.debug('Merging short segment of %d into next segment', len(seg))
+            # merge into next by prepending
+            coalesced[idx + 1] = seg + coalesced[idx + 1]
+        else:
+            # last remaining short segment with no neighbors: keep it
+            merged.append(seg)
+
+    # Yield final segments (filter empties)
+    for seg in merged:
+        if not seg:
+            continue
+        if len(seg) < min_messages:
+            logging.debug('Yielding short segment of %d messages after all merges', len(seg))
+        yield [item[1] for item in seg]
+
+
+def build_conversation_from_segment(segment: List[dict], chat_identifier: str,
+                                    origfilename: str, local_handle: Optional[str],
+                                    embed_attachments: bool = False) -> conversation.Conversation:
+    conv = conversation.Conversation()
+    conv.origfilename = origfilename
+    conv.imclient = 'iMessage'
+    conv.service = 'iMessage'
+    conv.filenameuserid = chat_identifier
+
+    participants = set()
+    for msgobj in segment:
+        parts = msgobj.get('participants') or []
+        for participant in parts:
+            if isinstance(participant, dict):
+                participant_id = None
+                for key in ('id', 'identifier', 'handle', 'address', 'username', 'phone', 'value'):
+                    value = participant.get(key)
+                    if value:
+                        participant_id = str(value)
+                        break
+                if not participant_id:
+                    for value in participant.values():
+                        if value:
+                            participant_id = str(value)
+                            break
+                if participant_id:
+                    participants.add(participant_id)
+            elif participant:
+                participants.add(str(participant))
+    if local_handle:
+        participants.add(local_handle)
+    for participant in participants:
+        conv.add_participant(participant)
+    if local_handle:
+        conv.set_local_account(local_handle)
+
+    messages_by_guid: Dict[str, conversation.Message] = {}
+    reactions: Dict[Optional[str], List[dict]] = {}
+
+    for msgobj in segment:
+        associated_guid = msgobj.get('associated_message_guid')
+        reaction_type = msgobj.get('reaction_type') or msgobj.get('reaction')
+        if reaction_type or (associated_guid and not msgobj.get('text')):
+            if associated_guid:
+                reactions.setdefault(associated_guid, []).append(msgobj)
+            else:
+                reactions.setdefault(None, []).append(msgobj)
+            continue
+
+        msg = _raw_to_message(msgobj, local_handle)
+        attachments = msgobj.get('attachments') or []
+        for attachment_meta in attachments:
+            att = conversation.Attachment()
+            att.name = attachment_meta.get('filename') or attachment_meta.get('transfer_name') or attachment_meta.get('mime_type') or 'attachment'
+            att.mimetype = attachment_meta.get('mime_type') or 'application/octet-stream'
+            path = attachment_meta.get('path')
+            if embed_attachments and path and os.path.isfile(path):
+                try:
+                    with open(path, 'rb') as af:
+                        att.data = af.read()
+                    _attachment_read_pacing()
+                except Exception:
+                    att.data = b''
+                    logging.warning('Failed to read attachment path: %s', path)
+            else:
+                att.data = b''
+                if path:
+                    att.orig_path = path
+                    if embed_attachments:
+                        logging.warning('Attachment path missing or unreadable; not embedded: %s', path)
+            att.gen_contentid()
+            msg.attachments.append(att)
+            conv.hasattachments = True
+
+        conv.add_participant(msg.msgfrom)
+        if local_handle and msg.msgfrom.lower() == (local_handle or '').lower():
+            conv.set_local_account(msg.msgfrom)
+        else:
+            conv.set_remote_account(msg.msgfrom)
+        conv.add_message(msg)
+        if msg.guid:
+            messages_by_guid[msg.guid] = msg
+
+    for target_guid, reaction_list in reactions.items():
+        if target_guid is None:
+            for reaction in reaction_list:
+                actor = norm_user(reaction.get('actor') or reaction.get('sender') or reaction.get('handle')) or 'UNKNOWN'
+                reaction_type = reaction.get('reaction_type') or reaction.get('reaction') or 'reacted'
+                ev = conversation.Message('event')
+                ev.msgfrom = 'System Message'
+                ev.date = parse_date(reaction.get('date')) or datetime.datetime.now(datetime.timezone.utc)
+                ev.text = f'{actor} {reaction_type} a message (unknown target)'
+                conv.add_message(ev)
+            continue
+
+        target_msg = messages_by_guid.get(target_guid)
+        if target_msg:
+            html_frag = _render_reactions_html(reaction_list)
+            text_frag = _render_reactions_text(reaction_list)
+            if html_frag:
+                if target_msg.html:
+                    target_msg.html += html_frag
+                else:
+                    escaped = _html.escape(target_msg.text) if target_msg.text else ''
+                    target_msg.html = escaped + html_frag
+                    if not target_msg.text:
+                        target_msg.text = ''
+            else:
+                if target_msg.text:
+                    target_msg.text += '\n' + text_frag
+                else:
+                    target_msg.text = text_frag
+        else:
+            for reaction in reaction_list:
+                actor = norm_user(reaction.get('actor') or reaction.get('sender') or reaction.get('handle')) or 'UNKNOWN'
+                reaction_type = reaction.get('reaction_type') or reaction.get('reaction') or 'reacted'
+                ev = conversation.Message('event')
+                ev.msgfrom = 'System Message'
+                ev.date = parse_date(reaction.get('date')) or datetime.datetime.now(datetime.timezone.utc)
+                ev.text = f'{actor} {reaction_type} a message (GUID {target_guid})'
+                conv.add_message(ev)
+
+    if conv.messages:
+        conv.startdate = conv.getoldestmessage().date
+        conv.enddate = conv.getyoungestmessage().date
+    return conv
+
+
+__all__ = [
+    'parse_date',
+    'norm_user',
+    'segment_messages',
+    'build_conversation_from_segment',
+]

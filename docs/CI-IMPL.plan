@@ -1,0 +1,432 @@
+# CI Implementation Plan for chatlogtoeml
+## Target: GitHub Actions (free tier, public repo)
+
+---
+
+## Overview
+
+This plan produces two workflow files and one change to `pyproject.toml`.
+
+**Files to create:**
+- `.github/workflows/ci.yml` — runs on every push/PR; jobs: lint, test, smoke, build
+- `.github/workflows/security.yml` — runs nightly + on push to `main`; job: audit
+
+**Files to modify:**
+- `pyproject.toml` — add a `[dependency-groups]` dev group (PEP 735, supported by uv)
+
+**Key design decisions:**
+- This project uses `uv` with a committed `uv.lock`. All CI installs use
+  `uv sync --frozen`, which verifies the lockfile is up-to-date and refuses to
+  modify it. This is the correct CI posture.
+- Dev tools (ruff, pip-audit) are added to a `[dependency-groups]` dev group so
+  their versions are locked in `uv.lock`. They are invoked via `uv run` so the
+  locked versions are used — not whatever happens to be latest.
+- Action versions must be pinned to full 40-character SHA digests (see Step 5)
+  to prevent supply chain attacks via tag hijacking.
+- For a public repo, GitHub Actions minutes are unlimited; all jobs run on every
+  push and PR.
+
+---
+
+## Step 1 — Add a dev dependency group to `pyproject.toml`
+
+Open `pyproject.toml`. **After** the `[tool.setuptools.packages.find]` block, append:
+
+```toml
+[dependency-groups]
+dev = [
+  "ruff>=0.9",
+  "pip-audit>=2.9",
+]
+```
+
+`ruff` handles both linting and format-checking (replacing flake8 + isort + black
+in a single tool). `pip-audit` scans dependency trees for known CVEs.
+
+Do NOT add `mypy` at this time — the codebase has no type annotations and mypy
+would produce noise. It can be added later if annotations are introduced.
+
+---
+
+## Step 2 — Regenerate `uv.lock`
+
+Run this once locally after editing `pyproject.toml`:
+
+```bash
+uv lock
+```
+
+Commit both `pyproject.toml` and the updated `uv.lock` together.
+
+---
+
+## Step 3 — Create `.github/workflows/ci.yml`
+
+Create the file at exactly that path with this content:
+
+```yaml
+name: CI
+
+on:
+  push:
+    branches: ["main", "feature/**"]
+  pull_request:
+    branches: ["main"]
+
+# Restrict default token to read-only; each job grants only what it needs.
+permissions:
+  contents: read
+
+jobs:
+
+  # ── 1. Lint ──────────────────────────────────────────────────────────────────
+  lint:
+    name: Lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      # Install project + dev deps (ruff is in the dev group)
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Lint — ruff check
+        run: uv run ruff check .
+
+      - name: Lint — ruff format check
+        run: uv run ruff format --check .
+
+  # ── 2. Unit tests (matrix) ───────────────────────────────────────────────────
+  test:
+    name: Test (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      # Generate the synthetic DB fixtures that several tests depend on
+      - name: Generate test fixtures
+        run: |
+          uv run python tools/generate_ios_smsdb_fixture.py
+          uv run python tools/generate_macos_chatdb_fixture.py
+          uv run python tools/generate_blob_case_fixtures.py
+
+      - name: Run unit tests
+        run: uv run python -m unittest discover -v
+
+  # ── 3. Smoke tests ───────────────────────────────────────────────────────────
+  smoke:
+    name: Smoke tests
+    runs-on: ubuntu-latest
+    needs: [test]   # only run if unit tests pass
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Generate fixtures
+        run: |
+          uv run python tools/generate_ios_smsdb_fixture.py
+          uv run python tools/generate_macos_chatdb_fixture.py
+
+      - name: Smoke — db_to_eml (iOS sms.db)
+        run: |
+          mkdir -p /tmp/smoke_ios
+          uv run bin/db_to_eml samples/ios/sms.db /tmp/smoke_ios \
+            --clobber
+          count=$(ls /tmp/smoke_ios/*.eml 2>/dev/null | wc -l)
+          echo "iOS smoke: $count .eml file(s) produced"
+          [ "$count" -gt 0 ] || (echo "ERROR: no .eml output" && exit 1)
+
+      - name: Smoke — db_to_eml (macOS chat.db)
+        run: |
+          mkdir -p /tmp/smoke_macos
+          uv run bin/db_to_eml samples/macos/chat.db /tmp/smoke_macos \
+            --clobber
+          count=$(ls /tmp/smoke_macos/*.eml 2>/dev/null | wc -l)
+          echo "macOS smoke: $count .eml file(s) produced"
+          [ "$count" -gt 0 ] || (echo "ERROR: no .eml output" && exit 1)
+
+      - name: Smoke — json_to_eml (sample.ndjson)
+        run: |
+          mkdir -p /tmp/smoke_ndjson
+          uv run bin/json_to_eml samples/ndjson/sample.ndjson /tmp/smoke_ndjson \
+            --local-handle me --clobber
+          count=$(ls /tmp/smoke_ndjson/*.eml 2>/dev/null | wc -l)
+          echo "NDJSON smoke: $count .eml file(s) produced"
+          [ "$count" -gt 0 ] || (echo "ERROR: no .eml output" && exit 1)
+
+      - name: Smoke — chat_convert (Adium XML)
+        run: |
+          mkdir -p /tmp/smoke_adium
+          uv run bin/chat_convert \
+            'samples/adiumxml/theirscreenname (2007-03-25T12.31.28-0400).chatlog' \
+            /tmp/smoke_adium --clobber
+          count=$(ls /tmp/smoke_adium/*.eml 2>/dev/null | wc -l)
+          echo "Adium smoke: $count .eml file(s) produced"
+          [ "$count" -gt 0 ] || (echo "ERROR: no .eml output" && exit 1)
+
+  # ── 4. Build verification ────────────────────────────────────────────────────
+  build:
+    name: Build sdist + wheel
+    runs-on: ubuntu-latest
+    needs: [test]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      # Build without dev extras to confirm the runtime package is self-contained
+      - name: Install runtime dependencies only
+        run: uv sync --frozen --no-dev
+
+      - name: Build sdist and wheel
+        run: uv build
+
+      # twine check validates PKG-INFO / METADATA formatting (no upload)
+      - name: Validate dist metadata
+        run: uv tool run twine check dist/*
+
+      - name: Upload dist artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          retention-days: 7
+```
+
+---
+
+## Step 4 — Create `.github/workflows/security.yml`
+
+Create the file at exactly that path with this content:
+
+```yaml
+name: Security audit
+
+on:
+  schedule:
+    # Run nightly at 02:17 UTC (offset from :00 to reduce GitHub load spikes)
+    - cron: "17 2 * * *"
+  push:
+    branches: ["main"]
+
+permissions:
+  contents: read
+
+jobs:
+  pip-audit:
+    name: pip-audit (CVE scan)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      # Export the locked runtime deps to a requirements.txt, then audit them.
+      # --no-dev excludes ruff/pip-audit themselves from the scan (reduces noise).
+      - name: Export locked requirements
+        run: uv export --frozen --no-dev -o /tmp/requirements-locked.txt
+
+      - name: Run pip-audit
+        run: |
+          uv run pip-audit \
+            --requirement /tmp/requirements-locked.txt \
+            --output-format columns
+```
+
+---
+
+## Step 5 — Pin action versions to SHA digests (supply chain hardening)
+
+**This step is mandatory before merging.** GitHub Actions `@vN` tags can be moved
+by the action maintainer to point to different (potentially malicious) code.
+Pinning to a full 40-character SHA makes the workflow immutable.
+
+### How to find the correct SHA
+
+For each action reference in the YAML files (`actions/checkout@v4`,
+`astral-sh/setup-uv@v4`, `actions/upload-artifact@v4`):
+
+1. Go to the action's GitHub repository.
+2. Click "Releases", find the latest release for the major version tag (e.g. `v4`).
+3. Click the release commit link to open the commit page.
+4. Copy the full 40-character commit SHA from the URL or "Copy SHA" button.
+
+### Replace each `@vN` tag with `@<SHA>`
+
+Example (do not use these — look up current values):
+
+```yaml
+# Before:
+- uses: actions/checkout@v4
+# After (example SHA — verify this yourself):
+- uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+```
+
+Include a `# vX.Y.Z` comment after each SHA so it remains human-readable.
+
+Replace all three action references in both workflow files:
+- `actions/checkout@v4`
+- `astral-sh/setup-uv@v4`
+- `actions/upload-artifact@v4`
+
+### Automated alternative
+
+Install `pin-github-actions` (or similar tooling) to do this automatically:
+
+```bash
+# Using pipx (does not need to be in this project's deps)
+pipx run pin-github-actions .github/workflows/ci.yml
+pipx run pin-github-actions .github/workflows/security.yml
+```
+
+---
+
+## Step 6 — Add ruff configuration to `pyproject.toml`
+
+Append this block to `pyproject.toml` to configure ruff for the codebase.
+The settings are chosen to be non-intrusive for an existing project:
+
+```toml
+[tool.ruff]
+target-version = "py39"
+line-length = 100
+
+[tool.ruff.lint]
+# E/W = pycodestyle, F = pyflakes, I = isort, UP = pyupgrade (auto-fix)
+select = ["E", "W", "F", "I", "UP"]
+# Ignore line-length in existing docstrings/comments; fix code >= 100 chars
+ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["chatlogtoeml"]
+```
+
+After adding this, run `uv run ruff check .` locally before the first push to
+see what violations exist. Fix errors (E/F/W); format issues can be
+auto-fixed with `uv run ruff format .` and `uv run ruff check --fix .`.
+
+---
+
+## Step 7 — Verify locally before pushing
+
+Run the full local equivalent of what CI will run:
+
+```bash
+# 1. Confirm lockfile is consistent after pyproject.toml changes
+uv sync --frozen
+
+# 2. Lint
+uv run ruff check .
+uv run ruff format --check .
+
+# 3. Generate fixtures
+uv run python tools/generate_ios_smsdb_fixture.py
+uv run python tools/generate_macos_chatdb_fixture.py
+uv run python tools/generate_blob_case_fixtures.py
+
+# 4. Unit tests
+uv run python -m unittest discover -v
+
+# 5. Quick smoke (ios only)
+mkdir -p /tmp/smoke_ios
+uv run bin/db_to_eml samples/ios/sms.db /tmp/smoke_ios --clobber
+ls /tmp/smoke_ios/*.eml
+
+# 6. Build
+uv build
+uv tool run twine check dist/*
+```
+
+---
+
+## Step 8 — Commit and push
+
+```bash
+git add pyproject.toml uv.lock \
+        .github/workflows/ci.yml \
+        .github/workflows/security.yml
+git commit -m "Add GitHub Actions CI and nightly security audit"
+git push
+```
+
+After the push, open the repository on GitHub, click the "Actions" tab, and
+confirm all jobs are green. The security workflow will also be visible under
+"Scheduled" workflows and will first run at 02:17 UTC.
+
+---
+
+## Expected job run times (free tier, ubuntu-latest)
+
+| Job              | Est. runtime |
+|------------------|--------------|
+| lint             | ~45 s        |
+| test (3.9)       | ~60 s        |
+| test (3.11)      | ~55 s        |
+| test (3.12)      | ~55 s        |
+| smoke            | ~90 s        |
+| build            | ~45 s        |
+| pip-audit (night)| ~60 s        |
+
+Total per push: ~6 minutes elapsed (lint + test matrix + smoke + build run in parallel).
+Public repo minutes on GitHub free tier are unlimited, so there is no cost concern.
+
+---
+
+## Notes and decisions not made here
+
+- **Codecov / coverage upload:** Not included. If coverage is wanted, add
+  `coverage run -m unittest discover -v && coverage xml` and the
+  `codecov/codecov-action` step to the test job.
+- **mypy:** Not included. The codebase has no type annotations. Add it to the dev
+  group and a dedicated `typecheck` job only after annotations are introduced.
+- **Dependabot for actions:** Consider adding `.github/dependabot.yml` to keep
+  action SHA pins fresh automatically:
+  ```yaml
+  version: 2
+  updates:
+    - package-ecosystem: "github-actions"
+      directory: "/"
+      schedule:
+        interval: "weekly"
+  ```
+- **Branch protection:** After CI is green, enable "Require status checks to pass
+  before merging" on the `main` branch in the repository settings, and require
+  all four CI jobs: `lint`, `test (3.9/3.11/3.12)`, `smoke`, `build`.
