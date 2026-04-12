@@ -244,47 +244,47 @@ class TestAppleDBScaffold(unittest.TestCase):
             self.assertIn("Owner Person", eml["From"])
             self.assertIn("Remote Friend", eml.as_string())
 
-        def test_parse_file_prefers_chat_guid_when_chat_identifier_missing(self):
-            with tempfile.TemporaryDirectory() as td:
-                tdp = Path(td)
-                sms_db = tdp / "sms.db"
+    def test_parse_file_prefers_chat_guid_when_chat_identifier_missing(self):
+        with tempfile.TemporaryDirectory() as td:
+            tdp = Path(td)
+            sms_db = tdp / "sms.db"
 
-                conn = sqlite3.connect(str(sms_db))
-                cur = conn.cursor()
-                cur.executescript(
-                    """
-                    CREATE TABLE handle (ROWID INTEGER PRIMARY KEY, id TEXT);
-                    CREATE TABLE chat (ROWID INTEGER PRIMARY KEY, chat_identifier TEXT, guid TEXT);
-                    CREATE TABLE chat_handle_join (chat_id INTEGER, handle_id INTEGER);
-                    CREATE TABLE chat_message_join (chat_id INTEGER, message_id INTEGER);
-                    CREATE TABLE message (
-                        ROWID INTEGER PRIMARY KEY,
-                        guid TEXT,
-                        text TEXT,
-                        date INTEGER,
-                        is_from_me INTEGER,
-                        handle_id INTEGER,
-                        service TEXT,
-                        account TEXT
-                    );
-                    """
-                )
-                cur.execute("INSERT INTO handle(ROWID, id) VALUES(1, '+15555550100')")
-                cur.execute("INSERT INTO chat(ROWID, chat_identifier, guid) VALUES(1, NULL, 'SMS;-;+15555550100')")
-                cur.execute("INSERT INTO chat_handle_join(chat_id, handle_id) VALUES(1, 1)")
-                cur.execute(
-                    """
-                    INSERT INTO message(ROWID, guid, text, date, is_from_me, handle_id, service, account)
-                    VALUES(1, 'm-1', 'hello', 0, 0, 1, 'iMessage', 'e:owner@example.com')
-                    """
-                )
-                cur.execute("INSERT INTO chat_message_join(chat_id, message_id) VALUES(1, 1)")
-                conn.commit()
-                conn.close()
+            conn = sqlite3.connect(str(sms_db))
+            cur = conn.cursor()
+            cur.executescript(
+                """
+                CREATE TABLE handle (ROWID INTEGER PRIMARY KEY, id TEXT);
+                CREATE TABLE chat (ROWID INTEGER PRIMARY KEY, chat_identifier TEXT, guid TEXT);
+                CREATE TABLE chat_handle_join (chat_id INTEGER, handle_id INTEGER);
+                CREATE TABLE chat_message_join (chat_id INTEGER, message_id INTEGER);
+                CREATE TABLE message (
+                    ROWID INTEGER PRIMARY KEY,
+                    guid TEXT,
+                    text TEXT,
+                    date INTEGER,
+                    is_from_me INTEGER,
+                    handle_id INTEGER,
+                    service TEXT,
+                    account TEXT
+                );
+                """
+            )
+            cur.execute("INSERT INTO handle(ROWID, id) VALUES(1, '+15555550100')")
+            cur.execute("INSERT INTO chat(ROWID, chat_identifier, guid) VALUES(1, NULL, 'SMS;-;+15555550100')")
+            cur.execute("INSERT INTO chat_handle_join(chat_id, handle_id) VALUES(1, 1)")
+            cur.execute(
+                """
+                INSERT INTO message(ROWID, guid, text, date, is_from_me, handle_id, service, account)
+                VALUES(1, 'm-1', 'hello', 0, 0, 1, 'iMessage', 'e:owner@example.com')
+                """
+            )
+            cur.execute("INSERT INTO chat_message_join(chat_id, message_id) VALUES(1, 1)")
+            conn.commit()
+            conn.close()
 
-                convs = list(apple_db_module.parse_file(str(sms_db), min_messages=1))
-                self.assertEqual(len(convs), 1)
-                self.assertEqual(convs[0].filenameuserid, 'SMS;-;+15555550100')
+            convs = list(apple_db_module.parse_file(str(sms_db), min_messages=1))
+            self.assertEqual(len(convs), 1)
+            self.assertEqual(convs[0].filenameuserid, 'SMS;-;+15555550100')
 
 
 if __name__ == '__main__':
